@@ -424,6 +424,7 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
               <div class="col-dropdown" id="col-dropdown"></div>
             </div>
             <button class="btn btn-sm" onclick="loadWorkspaceVideos().then(()=>renderDB())">↻ Refresh</button>
+            <button class="btn btn-sm" id="bulk-add-btn" onclick="bulkAddFiltered()" style="display:none;">＋ Save filtered to workspace</button>
           </div>
         </div>
         <div id="db-table" style="overflow-x:auto;"></div>
@@ -1224,7 +1225,7 @@ const ALL_COLS=[
   {k:'format',l:'Format'},
   {k:'formula',l:'Formula'},
   {k:'published_at',l:'Published'},
-  {k:'video_length',l:'Length'},
+  {k:'video_length',l:'Length',sortKey:'video_length_secs'},
   {k:'number_of_tags',l:'Tags',num:true},
   {k:'title_length',l:'TitleLen',num:true},
   {k:'clickbait_score',l:'Clickbait',num:true},
@@ -1293,6 +1294,9 @@ function setCols(keys){
 }
 
 function renderDB(){
+  const isMaster=currentWorkspace?.is_master;
+  const bulkBtn=document.getElementById('bulk-add-btn');
+  if(bulkBtn)bulkBtn.style.display=isMaster?'':'none';
   const search=(document.getElementById('db-search')?.value||'').toLowerCase();
   const filter=document.getElementById('db-filter')?.value||'';
   let rows=workspaceVideos.filter(d=>{
@@ -1301,7 +1305,9 @@ function renderDB(){
     return true;
   });
   rows.sort((a,b)=>{
-    const av=a[sortCol],bv=b[sortCol];
+    const col=ALL_COLS.find(c=>c.k===sortCol);
+    const sk=col?.sortKey||sortCol;
+    const av=a[sk],bv=b[sk];
     const an=parseFloat(av),bn=parseFloat(bv);
     if(!isNaN(an)&&!isNaN(bn))return an>bn?sortDir:an<bn?-sortDir:0;
     return String(av??'').localeCompare(String(bv??''))*sortDir*-1;
@@ -1334,6 +1340,36 @@ function renderDB(){
   });
   html+='</tbody></table></div>';
   document.getElementById('db-table').innerHTML=html;
+}
+
+async function bulkAddFiltered(){
+  const search=(document.getElementById('db-search')?.value||'').toLowerCase();
+  const filter=document.getElementById('db-filter')?.value||'';
+  const filtered=workspaceVideos.filter(d=>{
+    if(filter&&d.format!==filter)return false;
+    if(search&&!d.video_title?.toLowerCase().includes(search)&&!d.channel_name?.toLowerCase().includes(search))return false;
+    return true;
+  });
+  if(!filtered.length){alert('No videos match the current filter.');return;}
+  const nonMaster=(SESSION?.workspaces||[]).filter(w=>!w.is_master);
+  if(!nonMaster.length){alert('Create a workspace first, then use this button to copy filtered videos into it.');return;}
+  const opts=nonMaster.map((w,i)=>`${i+1}. ${w.name} (${w.video_count||0} videos)`).join('\n');
+  const choice=prompt(`Copy ${filtered.length} video(s) to which workspace?\n\n${opts}\n\nType the number:`);
+  if(!choice)return;
+  const idx=parseInt(choice)-1;
+  if(isNaN(idx)||idx<0||idx>=nonMaster.length){alert('Invalid choice.');return;}
+  const ws=nonMaster[idx];
+  const btn=document.getElementById('bulk-add-btn');
+  btn.disabled=true;btn.textContent='Saving...';
+  try{
+    const res=await api('POST',`/workspaces/${ws.id}/bulk-add`,{video_ids:filtered.map(d=>d.video_id)});
+    const me=await api('GET','/auth/me');if(me)SESSION.workspaces=me.workspaces;
+    btn.textContent='＋ Save filtered to workspace';btn.disabled=false;
+    alert(`Done — ${res.added} video(s) added to "${ws.name}"${res.already_linked?' ('+res.already_linked+' were already there)':''}.`);
+  }catch(e){
+    btn.textContent='＋ Save filtered to workspace';btn.disabled=false;
+    alert('Error: '+e.message);
+  }
 }
 
 function toggleRow(vid){
