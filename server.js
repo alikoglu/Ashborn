@@ -331,6 +331,30 @@ app.post('/videos', async (req, res) => {
   res.json({ success: true, video_id: video.video_id });
 });
 
+// Bulk-link a list of video IDs from master into a workspace
+app.post('/workspaces/:id/bulk-add', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'editor')) return;
+  const ws = await one('SELECT * FROM workspaces WHERE id = $1', [req.params.id]);
+  if (!ws) return sendErr(res, 'Not found', 404);
+  if (ws.is_master) return sendErr(res, 'Cannot bulk-add to master database');
+  const perm = await one('SELECT permission FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [req.params.id, req.session.uid]);
+  if (!perm) return sendErr(res, 'Forbidden', 403);
+  const { video_ids = [] } = req.body || {};
+  if (!Array.isArray(video_ids) || !video_ids.length) return sendErr(res, 'video_ids array required');
+  let added = 0, already_linked = 0;
+  for (const vid of video_ids) {
+    const exists = await one('SELECT 1 FROM videos WHERE video_id = $1', [vid]);
+    if (!exists) continue;
+    const result = await q(
+      'INSERT INTO video_workspaces (video_id, workspace_id, added_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING',
+      [vid, req.params.id, req.session.uid]
+    );
+    if (result.length === 0) already_linked++; else added++;
+  }
+  res.json({ success: true, added, already_linked });
+});
+
 // ══════════════════════════════════════════════════════════════
 // STATS
 // ══════════════════════════════════════════════════════════════
