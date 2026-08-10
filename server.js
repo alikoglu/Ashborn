@@ -456,13 +456,10 @@ app.delete('/admin/workspaces/:id/members/:uid', async (req, res) => {
 app.get('/transcript/:videoId', async (req, res) => {
   if (!requireAuth(req, res)) return;
   const { videoId } = req.params;
-  const ytKey = req.query.ytKey;
-  if (!ytKey) return sendErr(res, 'ytKey required');
 
-  const captionRes = await fetch(`https://www.googleapis.com/youtube/v3/captions?part=snippet&videoId=${encodeURIComponent(videoId)}&key=${encodeURIComponent(ytKey)}`);
-  const captionData = await captionRes.json();
-  if (captionData.error) return sendErr(res, captionData.error.message);
-
+  // The YouTube timedtext endpoint works without OAuth or an API key.
+  // The captions API (googleapis.com/youtube/v3/captions) requires OAuth for
+  // most videos and was causing 400 errors, so it has been removed.
   const ttRes = await fetch(`https://www.youtube.com/api/timedtext?v=${encodeURIComponent(videoId)}&lang=en&fmt=json3`, {
     headers: { 'User-Agent': 'Mozilla/5.0' },
   });
@@ -491,7 +488,7 @@ app.get('/transcript/:videoId', async (req, res) => {
     available: first30Text.length > 0,
     first30: first30Text,
     transcript_preview: fullText,
-    caption_count: captionData.items?.length || 0,
+    caption_count: 0,
   });
 });
 
