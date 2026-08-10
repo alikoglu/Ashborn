@@ -926,7 +926,7 @@ function hasIntroData(d){
 async function runIntroAnalysis(d, apiKey){
   let t;
   try{
-    t = await api('GET', '/transcript/'+d.video_id+'?ytKey='+encodeURIComponent(apiKey));
+    t = await api('GET', '/transcript/'+d.video_id);
   }catch(e){ return 'error'; }
   if(!t?.available || !t.first30) return 'no-transcript';
   d.intro_transcript = t.first30;
