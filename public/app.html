@@ -2372,52 +2372,46 @@ async function switchPlayerView(vid, view) {
 
 async function initPlayerOverlay(vid) {
   const ps = getPS(vid);
-  // Load draws + captions from server
+  // Guard: only init once per vid
+  if (ps.overlayInitialized) return;
+  ps.overlayInitialized = true;
+
   try {
     const data = await api('GET', '/videos/' + vid + '/draws');
     ps.draws = data.draws || [];
     ps.captions = data.captions || [];
   } catch(e) { ps.draws = []; ps.captions = []; }
 
-  // Set up canvas
   const wrap = document.getElementById('player-wrap-' + vid);
   const canvas = document.getElementById('draw-canvas-' + vid);
-  const canvasWrap = document.getElementById('canvas-wrap-' + vid);
   if (!canvas || !wrap) return;
 
-  // Measure from the iframe — it has the definitive rendered size from aspect-ratio CSS
-  const iframe = document.getElementById('yt-player-' + vid);
-  function resizeCanvas() {
-    const target = iframe || wrap;
-    const r = target.getBoundingClientRect();
-    const w = Math.round(r.width) || 640;
-    const h = Math.round(r.height) || 360;
+  // Set canvas pixel size = wrap's natural 16:9 size.
+  // wrap.offsetWidth is reliable synchronously (wrap is visible and laid out).
+  // The iframe inside uses aspect-ratio:16/9 so height = width * 9/16.
+  function syncCanvasSize() {
+    const w = wrap.offsetWidth || 640;
+    const h = Math.round(w * 9 / 16);
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
+      redrawCanvas(vid);
     }
-    redrawCanvas(vid);
   }
-  // Double rAF ensures layout is complete before measuring
-  requestAnimationFrame(() => requestAnimationFrame(resizeCanvas));
-  const ro = new ResizeObserver(resizeCanvas);
-  ro.observe(iframe || wrap);
+  syncCanvasSize();
+  new ResizeObserver(syncCanvasSize).observe(wrap);
 
-  // Drawing events
-  canvas.addEventListener('mousedown', e => startDraw(e, vid));
-  canvas.addEventListener('mousemove', e => moveDraw(e, vid));
-  canvas.addEventListener('mouseup', () => endDraw(vid));
+  // Attach draw events once
+  canvas.addEventListener('mousedown',  e => startDraw(e, vid));
+  canvas.addEventListener('mousemove',  e => moveDraw(e, vid));
+  canvas.addEventListener('mouseup',    () => endDraw(vid));
   canvas.addEventListener('mouseleave', () => endDraw(vid));
-  // Touch support
   canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e.touches[0], vid); }, {passive:false});
-  canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDraw(e.touches[0], vid); }, {passive:false});
-  canvas.addEventListener('touchend', e => { e.preventDefault(); endDraw(vid); }, {passive:false});
+  canvas.addEventListener('touchmove',  e => { e.preventDefault(); moveDraw(e.touches[0], vid); }, {passive:false});
+  canvas.addEventListener('touchend',   e => { e.preventDefault(); endDraw(vid); }, {passive:false});
 
-  // Set initial tool state
   setTool(vid, ps.tool);
   refreshDrawList(vid);
-
-  // Poll YouTube player for current time via postMessage
   startPlayerPoll(vid);
 }
 
@@ -2468,14 +2462,10 @@ function stopPlayerPoll(vid) {
 
 function getCanvasPos(e, canvas) {
   const r = canvas.getBoundingClientRect();
-  // r.width/height = CSS display size, canvas.width/height = pixel buffer size
-  // Map mouse to pixel coords directly
-  const scaleX = canvas.width / (r.width || canvas.width);
-  const scaleY = canvas.height / (r.height || canvas.height);
-  return {
-    x: (e.clientX - r.left) * scaleX,
-    y: (e.clientY - r.top) * scaleY
-  };
+  // Scale from CSS display size to canvas pixel size
+  const x = (e.clientX - r.left) * (canvas.width  / r.width);
+  const y = (e.clientY - r.top)  * (canvas.height / r.height);
+  return { x, y };
 }
 
 function startDraw(e, vid) {
