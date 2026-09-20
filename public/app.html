@@ -473,6 +473,29 @@ Your daily message limit is shown in the top bar.</div>
             <div id="admin-ws-list"></div>
           </div>
         </div>
+        <!-- Channel Monitor -->
+        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
+          <div class="flex-between" style="margin-bottom:.75rem;">
+            <div class="card-title" style="margin-bottom:0;">Channel Monitor <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">checks twice daily · 06:00 &amp; 18:00 UTC</span></div>
+            <div class="flex">
+              <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run now</button>
+              <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats now</button>
+            </div>
+          </div>
+          <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
+          <div class="flex" style="gap:.5rem;align-items:flex-end;">
+            <div class="field" style="margin:0;flex:1;">
+              <label>Channel ID</label>
+              <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
+            </div>
+            <div class="field" style="margin:0;flex:1;">
+              <label>Channel name</label>
+              <input type="text" id="new-ch-name" placeholder="Sbeev"/>
+            </div>
+            <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add</button>
+          </div>
+          <p style="font-size:.68rem;color:var(--smoke);margin-top:.5rem;">Find a channel ID: open the channel on YouTube → view page source → search for "channelId". Or use a tool like <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this one</a>.</p>
+        </div>
       </div>
 
     </div>
@@ -1553,6 +1576,7 @@ function appendMsg(text,role,temp=false){
 // ─── ADMIN ────────────────────────────────────────────────────
 async function loadAdmin(){
   if(SESSION?.user?.role!=='admin')return;
+  loadAdminChannels();
   try{
     const data=await api('GET','/admin/users');
     adminUsers=data.users||[];
@@ -1744,6 +1768,74 @@ if (tryRestoreSession()) {
   refreshSession(); // background: pull fresh workspaces, kick to login if token is dead
 } else {
   document.getElementById('login-screen').style.display = 'flex';
+}
+
+// ─── CHANNEL MONITOR ──────────────────────────────────────────
+async function loadAdminChannels(){
+  try{
+    const data=await api('GET','/admin/channels');
+    const channels=data.channels||[];
+    const el=document.getElementById('admin-channel-list');
+    if(!el)return;
+    if(!channels.length){
+      el.innerHTML='<p style="font-size:.78rem;color:var(--smoke);">No channels in watchlist yet.</p>';
+      return;
+    }
+    el.innerHTML=channels.map(ch=>`
+      <div class="user-list-item" style="gap:.75rem;">
+        <div style="flex:1;">
+          <div class="user-list-name">${esc(ch.channel_name)}</div>
+          <div class="user-list-meta">
+            ${esc(ch.channel_id)}
+            ${ch.last_checked?'· last checked '+new Date(ch.last_checked).toLocaleString():'· never checked'}
+            ${ch.last_video_id?'· last video: <a href="https://youtu.be/'+esc(ch.last_video_id)+'" target="_blank" style="color:var(--blue);">'+esc(ch.last_video_id)+'</a>':''}
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--smoke);cursor:pointer;">
+          <input type="checkbox" ${ch.active?'checked':''} data-cid="${esc(ch.channel_id)}" onchange="toggleChannel(this.dataset.cid,this.checked)"/>
+          active
+        </label>
+        <button class="btn btn-sm btn-danger" data-cid="${esc(ch.channel_id)}" data-name="${esc(ch.channel_name)}" onclick="removeChannel(this.dataset.cid,this.dataset.name)">Remove</button>
+      </div>`).join('');
+  }catch(e){console.warn('loadAdminChannels:',e.message);}
+}
+
+async function addChannel(){
+  const id=document.getElementById('new-ch-id').value.trim();
+  const name=document.getElementById('new-ch-name').value.trim();
+  if(!id||!name){alert('Channel ID and name are required.');return;}
+  try{
+    await api('POST','/admin/channels',{channel_id:id,channel_name:name});
+    document.getElementById('new-ch-id').value='';
+    document.getElementById('new-ch-name').value='';
+    loadAdminChannels();
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function toggleChannel(channelId,active){
+  try{await api('PATCH','/admin/channels/'+channelId,{active});}
+  catch(e){alert('Error: '+e.message);loadAdminChannels();}
+}
+
+async function removeChannel(channelId,name){
+  if(!confirm('Remove "'+name+'" from the watchlist?'))return;
+  try{await api('DELETE','/admin/channels/'+channelId);loadAdminChannels();}
+  catch(e){alert('Error: '+e.message);}
+}
+
+async function runCronNow(type){
+  const btn=document.getElementById(type==='monitor'?'btn-run-monitor':'btn-run-refresh');
+  const orig=btn.textContent;
+  btn.disabled=true;btn.textContent='Running...';
+  try{
+    const r=await api('POST','/admin/cron/'+type);
+    btn.textContent='Started ✓';
+    setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},3000);
+    if(type==='monitor')setTimeout(loadAdminChannels,5000);
+  }catch(e){
+    alert('Error: '+e.message);
+    btn.textContent=orig;btn.disabled=false;
+  }
 }
 </script>
 </body>
