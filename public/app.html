@@ -1580,7 +1580,7 @@ function buildPlayerHTML(vid, ytId, secs, anns, canEdit) {
     '<div style="margin-top:.75rem;border-top:1px solid var(--dust);padding-top:.6rem;">' +
     '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);margin-bottom:.4rem;">Add caption</div>' +
     '<div class="caption-input-row">' +
-    '<input type="text" id="cap-text-' + vid + '" placeholder="Caption text..." style="flex:1;font-size:.8rem;"/>' +
+    '<input type="text" id="cap-text-' + vid + '" placeholder="Caption text..." style="flex:1;font-size:.8rem;" data-vid="' + vid + '" onfocus="autoFillCapStart(this.dataset.vid)"/>' +
     '<div style="display:flex;flex-direction:column;gap:2px;"><label style="font-size:.58rem;color:var(--smoke);font-family:var(--font-m);">Start (s)</label><input type="number" id="cap-start-' + vid + '" style="width:70px;font-size:.78rem;" step="0.5" min="0"/></div>' +
     '<div style="display:flex;flex-direction:column;gap:2px;"><label style="font-size:.58rem;color:var(--smoke);font-family:var(--font-m);">End (s)</label><input type="number" id="cap-end-' + vid + '" style="width:70px;font-size:.78rem;" step="0.5" min="0"/></div>' +
     '<button class="btn btn-sm btn-primary" data-vid="' + vid + '" onclick="addCaption(this.dataset.vid)">+ Add</button>' +
@@ -1611,7 +1611,9 @@ function buildPlayerHTML(vid, ytId, secs, anns, canEdit) {
     '<span class="player-time-display" id="player-time-' + vid + '">0:00</span>' +
     '</div>' : '') +
     captionControls +
-    '<div id="draw-list-' + vid + '" style="display:flex;flex-direction:column;gap:.3rem;margin-top:.5rem;max-height:140px;overflow-y:auto;"></div>'
+    '<div id="cap-now-' + vid + '" style="display:none;font-size:.85rem;font-weight:500;padding:8px 12px;background:rgba(74,158,255,.1);border:1px solid rgba(74,158,255,.25);border-radius:var(--r);margin-top:.5rem;color:#90caf9;"></div>' +
+    '<div style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);margin-top:.6rem;margin-bottom:.25rem;">Saved annotations</div>' +
+    '<div id="draw-list-' + vid + '" style="display:flex;flex-direction:column;gap:.3rem;max-height:160px;overflow-y:auto;"></div>'
   );
 }
 
@@ -2388,8 +2390,9 @@ async function initPlayerOverlay(vid) {
   if (!canvas || !wrap) return;
 
   function resizeCanvas() {
-    canvas.width = wrap.offsetWidth;
-    canvas.height = wrap.offsetHeight;
+    const r = canvas.getBoundingClientRect();
+    canvas.width = r.width || wrap.offsetWidth;
+    canvas.height = r.height || wrap.offsetHeight;
     redrawCanvas(vid);
   }
   resizeCanvas();
@@ -2399,12 +2402,12 @@ async function initPlayerOverlay(vid) {
   // Drawing events
   canvas.addEventListener('mousedown', e => startDraw(e, vid));
   canvas.addEventListener('mousemove', e => moveDraw(e, vid));
-  canvas.addEventListener('mouseup', e => endDraw(e, vid));
-  canvas.addEventListener('mouseleave', e => endDraw(e, vid));
+  canvas.addEventListener('mouseup', () => endDraw(vid));
+  canvas.addEventListener('mouseleave', () => endDraw(vid));
   // Touch support
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e.touches[0], vid); }, { passive: false });
-  canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDraw(e.touches[0], vid); }, { passive: false });
-  canvas.addEventListener('touchend', e => { e.preventDefault(); endDraw(e.changedTouches[0], vid); }, { passive: false });
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e.touches[0], vid); }, {passive:false});
+  canvas.addEventListener('touchmove', e => { e.preventDefault(); moveDraw(e.touches[0], vid); }, {passive:false});
+  canvas.addEventListener('touchend', e => { e.preventDefault(); endDraw(vid); }, {passive:false});
 
   // Set initial tool state
   setTool(vid, ps.tool);
@@ -2414,7 +2417,42 @@ async function initPlayerOverlay(vid) {
   startPlayerPoll(vid);
 }
 
+
+function startPlayerPoll(vid) {
+  const ps = getPS(vid);
+  stopPlayerPoll(vid);
+  ps.pollTimer = setInterval(() => {
+    const iframe = document.getElementById('yt-player-' + vid);
+    if (iframe && iframe.contentWindow) {
+      try { iframe.contentWindow.postMessage('{"event":"command","func":"getCurrentTime","args":""}', '*'); } catch(e) {}
+    }
+  }, 250);
+  if (!ps.messageListener) {
+    ps.messageListener = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.event === 'infoDelivery' && data.info && data.info.currentTime != null) {
+          const t = data.info.currentTime;
+          ps.currentSec = t;
+          const display = document.getElementById('player-time-' + vid);
+          if (display) display.textContent = fmtSec(Math.floor(t));
+          redrawCanvas(vid);
+          updateCaptionSidebar(vid, t);
+        }
+      } catch(e) {}
+    };
+    window.addEventListener('message', ps.messageListener);
+  }
+}
+
+function stopPlayerPoll(vid) {
+  const ps = getPS(vid);
+  if (ps.pollTimer) { clearInterval(ps.pollTimer); ps.pollTimer = null; }
+}
+
 function getCanvasPos(e, canvas) {
+  // Use getBoundingClientRect for both position AND dimensions
+  // so CSS-scaled canvas matches pixel coordinates correctly
   const r = canvas.getBoundingClientRect();
   return {
     x: (e.clientX - r.left) / r.width,
@@ -2439,25 +2477,21 @@ function moveDraw(e, vid) {
   const canvas = document.getElementById('draw-canvas-' + vid);
   if (!canvas) return;
   const pos = getCanvasPos(e, canvas);
+  // Clamp to canvas bounds
+  pos.x = Math.max(0, Math.min(1, pos.x));
+  pos.y = Math.max(0, Math.min(1, pos.y));
   ps.path.push(pos);
-  // Draw live stroke
-  const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Redraw saved strokes
-  redrawSavedStrokes(vid, ctx, canvas, ps.currentSec || 0);
-  // Draw current stroke
-  if (ps.path.length > 1) {
-    drawPath(ctx, ps.path, ps.color, ps.width, canvas.width, canvas.height);
-  }
+  renderLiveStroke(vid, canvas);
 }
 
-async function endDraw(e, vid) {
+async function endDraw(vid) {
+  // Note: no event param — we don't add a position on end, just save what we have
   const ps = getPS(vid);
   if (!ps.drawing) return;
   ps.drawing = false;
-  if (ps.path.length < 2) { ps.path = []; return; }
+  if (ps.path.length < 2) { ps.path = []; redrawCanvas(vid); return; }
   const pathStr = pathToSVG(ps.path);
-  const endSec = ps.currentSec || ps.drawStartSec + 5;
+  const endSec = (ps.currentSec || ps.drawStartSec) + 5;
   try {
     const r = await api('POST', '/videos/' + vid + '/draws', {
       start_sec: ps.drawStartSec,
@@ -2468,45 +2502,57 @@ async function endDraw(e, vid) {
     });
     ps.draws.push(r.draw);
     refreshDrawList(vid);
-    redrawCanvas(vid);
   } catch(ex) { console.error('draw save failed:', ex.message); }
   ps.path = [];
+  redrawCanvas(vid);
+}
+
+function renderLiveStroke(vid, canvas) {
+  const ps = getPS(vid);
+  const ctx = canvas.getContext('2d');
+  // Use display size for drawing (not canvas pixel size which may differ)
+  const r = canvas.getBoundingClientRect();
+  const dw = r.width, dh = r.height;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Scale context to match CSS display size
+  ctx.save();
+  ctx.scale(canvas.width / dw, canvas.height / dh);
+  redrawSavedStrokes(vid, ctx, dw, dh, ps.currentSec || 0);
+  if (ps.path.length > 1) drawPathPts(ctx, ps.path, ps.color, ps.width, dw, dh);
+  ctx.restore();
 }
 
 function pathToSVG(pts) {
   if (!pts.length) return '';
-  return 'M' + pts.map((p,i) => (i===0?'':' L') + p.x.toFixed(4) + ',' + p.y.toFixed(4)).join('');
+  return 'M' + pts.map((p, i) => (i === 0 ? '' : ' L') + p.x.toFixed(4) + ',' + p.y.toFixed(4)).join('');
 }
 
 function svgToPoints(d) {
-  const nums = d.replace(/[ML]/g, ' ').trim().split(/\s+/);
-  const pts = [];
-  for (let i = 0; i < nums.length - 1; i += 2) {
-    pts.push({ x: parseFloat(nums[i]), y: parseFloat(nums[i+1]) });
-  }
-  return pts;
+  const parts = d.replace(/M/g,'').split(/L/);
+  return parts.map(s => {
+    const [x, y] = s.trim().split(',');
+    return { x: parseFloat(x), y: parseFloat(y) };
+  }).filter(p => !isNaN(p.x) && !isNaN(p.y));
 }
 
-function drawPath(ctx, pts, color, width, cw, ch) {
+function drawPathPts(ctx, pts, color, width, dw, dh) {
   if (pts.length < 2) return;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.moveTo(pts[0].x * cw, pts[0].y * ch);
-  for (let i = 1; i < pts.length; i++) {
-    ctx.lineTo(pts[i].x * cw, pts[i].y * ch);
-  }
+  ctx.moveTo(pts[0].x * dw, pts[0].y * dh);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * dw, pts[i].y * dh);
   ctx.stroke();
 }
 
-function redrawSavedStrokes(vid, ctx, canvas, currentSec) {
+function redrawSavedStrokes(vid, ctx, dw, dh, currentSec) {
   const ps = getPS(vid);
   ps.draws.forEach(d => {
     if (currentSec >= d.start_sec && currentSec <= d.end_sec) {
       const pts = svgToPoints(d.path_data);
-      drawPath(ctx, pts, d.color, d.width, canvas.width, canvas.height);
+      drawPathPts(ctx, pts, d.color, d.width, dw, dh);
     }
   });
 }
@@ -2515,104 +2561,30 @@ function redrawCanvas(vid) {
   const canvas = document.getElementById('draw-canvas-' + vid);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
+  const r = canvas.getBoundingClientRect();
+  const dw = r.width || canvas.width, dh = r.height || canvas.height;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.scale(canvas.width / dw, canvas.height / dh);
   const ps = getPS(vid);
-  redrawSavedStrokes(vid, ctx, canvas, ps.currentSec || 0);
-  updateCaptions(vid, ps.currentSec || 0);
+  redrawSavedStrokes(vid, ctx, dw, dh, ps.currentSec || 0);
+  ctx.restore();
+  updateCaptionSidebar(vid, ps.currentSec || 0);
 }
 
-function updateCaptions(vid, currentSec) {
-  const layer = document.getElementById('caption-layer-' + vid);
-  if (!layer) return;
+// Caption sidebar: shows current caption as highlighted text beside the video
+function updateCaptionSidebar(vid, currentSec) {
+  const el = document.getElementById('cap-now-' + vid);
+  if (!el) return;
   const ps = getPS(vid);
-  layer.innerHTML = '';
-  ps.captions.forEach(c => {
-    if (currentSec >= c.start_sec && currentSec <= c.end_sec) {
-      const el = document.createElement('div');
-      el.className = 'caption-el';
-      el.style.cssText = 'left:' + c.pos_x + '%;top:' + c.pos_y + '%;color:' + c.color + ';font-size:' + c.font_size + 'px;';
-      el.textContent = c.caption_text;
-      layer.appendChild(el);
-    }
-  });
-}
-
-// Poll YT player time via postMessage
-function startPlayerPoll(vid) {
-  const ps = getPS(vid);
-  stopPlayerPoll(vid);
-  ps.pollTimer = setInterval(() => {
-    const iframe = document.getElementById('yt-player-' + vid);
-    if (iframe && iframe.contentWindow) {
-      try {
-        iframe.contentWindow.postMessage('{"event":"command","func":"getCurrentTime","args":""}', '*');
-      } catch(e) {}
-    }
-  }, 250);
-  // Listen for time updates
-  if (!ps.messageListener) {
-    ps.messageListener = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.event === 'infoDelivery' && data.info && data.info.currentTime != null) {
-          const t = data.info.currentTime;
-          ps.currentSec = t;
-          const display = document.getElementById('player-time-' + vid);
-          if (display) display.textContent = fmtSec(Math.floor(t));
-          redrawCanvas(vid);
-        }
-      } catch(e) {}
-    };
-    window.addEventListener('message', ps.messageListener);
+  const active = ps.captions.filter(c => currentSec >= c.start_sec && currentSec <= c.end_sec);
+  if (!active.length) {
+    el.style.display = 'none';
+    el.textContent = '';
+  } else {
+    el.style.display = 'block';
+    el.textContent = active.map(c => c.caption_text).join(' / ');
   }
-}
-
-function stopPlayerPoll(vid) {
-  const ps = getPS(vid);
-  if (ps.pollTimer) { clearInterval(ps.pollTimer); ps.pollTimer = null; }
-}
-
-function setTool(vid, tool) {
-  const ps = getPS(vid);
-  ps.tool = tool;
-  const wrap = document.getElementById('canvas-wrap-' + vid);
-  if (wrap) {
-    wrap.classList.remove('drawing', 'text-mode');
-    if (tool === 'pen') wrap.classList.add('drawing');
-    if (tool === 'text') wrap.classList.add('text-mode');
-  }
-  ['pen','text','none'].forEach(t => {
-    const btn = document.getElementById('tool-' + t + '-' + vid);
-    if (btn) btn.classList.toggle('active', t === tool);
-  });
-}
-
-function setDrawColor(vid, color, el) {
-  getPS(vid).color = color;
-  const wrap = document.getElementById('canvas-wrap-' + vid) || document.getElementById('player-wrap-' + vid);
-  if (wrap) wrap.querySelectorAll('.color-swatch').forEach(s => s.classList.toggle('active', s.dataset.color === color));
-}
-
-function setPenWidth(vid, w) {
-  getPS(vid).width = parseInt(w);
-}
-
-function undoLastDraw(vid) {
-  const ps = getPS(vid);
-  const last = ps.draws.pop();
-  if (!last) return;
-  api('DELETE', '/videos/' + vid + '/draws/' + last.id).catch(() => {});
-  redrawCanvas(vid);
-  refreshDrawList(vid);
-}
-
-async function clearAllDraws(vid) {
-  if (!confirm('Clear all drawn strokes for this video?')) return;
-  const ps = getPS(vid);
-  await Promise.all(ps.draws.map(d => api('DELETE', '/videos/' + vid + '/draws/' + d.id).catch(() => {})));
-  ps.draws = [];
-  redrawCanvas(vid);
-  refreshDrawList(vid);
 }
 
 function refreshDrawList(vid) {
@@ -2620,19 +2592,20 @@ function refreshDrawList(vid) {
   if (!el) return;
   const ps = getPS(vid);
   const canEdit = SESSION?.user?.role === 'editor' || SESSION?.user?.role === 'admin';
-  if (!ps.draws.length && !ps.captions.length) { el.innerHTML = ''; return; }
-  el.innerHTML =
+  el.innerHTML = (ps.draws.length || ps.captions.length) ? '' : '<p style="font-size:.72rem;color:var(--smoke);">No saved annotations yet.</p>';
+  el.innerHTML +=
     ps.draws.map(d =>
-      '<div class="draw-list-item"><div class="dl-swatch" style="width:10px;height:10px;border-radius:50%;background:' + d.color + ';flex-shrink:0;"></div>' +
-      '<span class="dl-time">' + fmtSec(Math.floor(d.start_sec)) + ' → ' + fmtSec(Math.floor(d.end_sec)) + '</span>' +
+      '<div class="draw-list-item">' +
+      '<div style="width:10px;height:10px;border-radius:50%;background:' + d.color + ';flex-shrink:0;"></div>' +
+      '<span class="dl-time">' + fmtSec(Math.floor(d.start_sec)) + ' – ' + fmtSec(Math.floor(d.end_sec)) + '</span>' +
       '<span style="font-size:.68rem;color:var(--smoke);">stroke</span>' +
       (canEdit ? '<span class="dl-del" data-id="' + d.id + '" data-vid="' + vid + '" onclick="deleteDraw(this.dataset.vid,this.dataset.id)">✕</span>' : '') +
       '</div>'
     ).join('') +
     ps.captions.map(c =>
       '<div class="draw-list-item">' +
-      '<span class="dl-time">' + fmtSec(Math.floor(c.start_sec)) + ' → ' + fmtSec(Math.floor(c.end_sec)) + '</span>' +
-      '<span style="font-size:.68rem;color:' + c.color + ';">"' + esc(c.caption_text.slice(0,30)) + (c.caption_text.length>30?'…':'') + '"</span>' +
+      '<span class="dl-time">' + fmtSec(Math.floor(c.start_sec)) + ' – ' + fmtSec(Math.floor(c.end_sec)) + '</span>' +
+      '<span style="font-size:.68rem;color:' + c.color + ';">"' + esc(c.caption_text.slice(0, 40)) + (c.caption_text.length > 40 ? '…' : '') + '"</span>' +
       (canEdit ? '<span class="dl-del" data-id="' + c.id + '" data-vid="' + vid + '" onclick="deleteCaption(this.dataset.vid,this.dataset.id)">✕</span>' : '') +
       '</div>'
     ).join('');
@@ -2641,15 +2614,17 @@ function refreshDrawList(vid) {
 async function addCaption(vid) {
   const text = document.getElementById('cap-text-' + vid)?.value?.trim();
   const start = parseFloat(document.getElementById('cap-start-' + vid)?.value || '0');
-  const end = parseFloat(document.getElementById('cap-end-' + vid)?.value || '0');
+  const rawEnd = document.getElementById('cap-end-' + vid)?.value;
+  const end = rawEnd ? parseFloat(rawEnd) : start + 4;
   if (!text) { alert('Enter caption text'); return; }
   if (end <= start) { alert('End time must be after start time'); return; }
   try {
     const r = await api('POST', '/videos/' + vid + '/captions', { caption_text: text, start_sec: start, end_sec: end });
     getPS(vid).captions.push(r.caption);
-    document.getElementById('cap-text-' + vid).value = '';
+    const ti = document.getElementById('cap-text-' + vid);
+    if (ti) ti.value = '';
     refreshDrawList(vid);
-    updateCaptions(vid, getPS(vid).currentSec || 0);
+    updateCaptionSidebar(vid, getPS(vid).currentSec || 0);
   } catch(e) { alert('Error: ' + e.message); }
 }
 
@@ -2665,7 +2640,7 @@ async function deleteCaption(vid, id) {
   await api('DELETE', '/videos/' + vid + '/captions/' + id).catch(() => {});
   const ps = getPS(vid);
   ps.captions = ps.captions.filter(c => String(c.id) !== String(id));
-  updateCaptions(vid, ps.currentSec || 0);
+  updateCaptionSidebar(vid, ps.currentSec || 0);
   refreshDrawList(vid);
 }
 </script>
