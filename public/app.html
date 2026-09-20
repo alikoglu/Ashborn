@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
 <title>Ashborn Studios — Content Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
+<script src="https://www.youtube.com/iframe_api"></script>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet"/>
 <style>
@@ -1526,9 +1527,12 @@ function buildTimelineHTML(vid, secs, anns, canEdit, videoLink) {
   ).join('');
 
   // ── Video player section (only if YouTube ID exists) ──────────
+  // Store ytId in player state for createYTPlayer
+  if (ytId) getPS(vid, ytId);
+
   const playerSection = ytId ? (
     '<div class="player-wrap" id="player-wrap-' + vid + '">' +
-    '<iframe id="yt-player-' + vid + '" src="https://www.youtube.com/embed/' + ytId + '?enablejsapi=1&origin=' + location.origin + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>' +
+    '<div id="yt-player-' + vid + '"></div>' +
     '<div class="player-canvas-wrap drawing" id="canvas-wrap-' + vid + '">' +
     '<canvas id="draw-canvas-' + vid + '"></canvas>' +
     '</div>' +
@@ -1812,11 +1816,9 @@ function timelineClick(e,bar){
   // Fill time input for quick marker drop
   const timeInput=document.getElementById('tann-time-'+vid);
   if(timeInput)timeInput.value=fmtSec(secs);
-  // Seek YouTube player
-  const iframe=document.getElementById('yt-player-'+vid);
-  if(iframe&&iframe.contentWindow){
-    try{iframe.contentWindow.postMessage(JSON.stringify({event:'command',func:'seekTo',args:[secs,true]}),'*');}catch(err){}
-  }
+  // Seek YouTube player via YT.Player API
+  const player = ytPlayers[vid];
+  if (player && typeof player.seekTo === 'function') player.seekTo(secs, true);
   // Move playhead immediately without waiting for poll
   const playhead=document.getElementById('tbar-playhead-'+vid);
   const timeLabel=document.getElementById('tbar-time-'+vid);
@@ -2342,11 +2344,13 @@ async function runCronNow(type){
 // ── Player overlay state ──────────────────────────────────────
 const playerState = {}; // vid -> {tool, color, width, drawing, path, draws, captions, ytPlayer, pollTimer}
 
-function getPS(vid) {
+function getPS(vid, ytId) {
   if (!playerState[vid]) playerState[vid] = {
     tool: 'pen', color: '#f5a623', width: 4,
-    drawing: false, path: [], draws: [], captions: []
+    drawing: false, path: [], draws: [], captions: [],
+    ytId: ytId || ''
   };
+  if (ytId && !playerState[vid].ytId) playerState[vid].ytId = ytId;
   return playerState[vid];
 }
 
@@ -2418,26 +2422,33 @@ async function initPlayerOverlay(vid) {
 }
 
 
-function startPlayerPoll(vid) {
+// YT IFrame API — called by YouTube when API is ready
+const ytPlayers = {}; // vid -> YT.Player instance
+window.onYouTubeIframeAPIReady = function() {
+  // Init any pending players
+  for (const vid of pendingYTInits) createYTPlayer(vid);
+  pendingYTInits.length = 0;
+};
+const pendingYTInits = [];
+
+function createYTPlayer(vid) {
+  if (ytPlayers[vid]) return;
   const ps = getPS(vid);
-  stopPlayerPoll(vid);
-  ps.pollTimer = setInterval(() => {
-    const iframe = document.getElementById('yt-player-' + vid);
-    if (iframe && iframe.contentWindow) {
-      try { iframe.contentWindow.postMessage('{"event":"command","func":"getCurrentTime","args":""}', '*'); } catch(e) {}
-    }
-  }, 250);
-  if (!ps.messageListener) {
-    ps.messageListener = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        if (data.event === 'infoDelivery' && data.info && data.info.currentTime != null) {
-          const t = data.info.currentTime;
+  ytPlayers[vid] = new YT.Player('yt-player-' + vid, {
+    videoId: ps.ytId,
+    playerVars: { playsinline: 1 },
+    events: {
+      onReady: () => {
+        // Start polling current time via the player object
+        if (ps.pollTimer) clearInterval(ps.pollTimer);
+        ps.pollTimer = setInterval(() => {
+          const player = ytPlayers[vid];
+          if (!player || typeof player.getCurrentTime !== 'function') return;
+          const t = player.getCurrentTime();
+          if (t == null) return;
           ps.currentSec = t;
-          // Update inline time display in pen controls
           const display = document.getElementById('player-time-' + vid);
           if (display) display.textContent = fmtSec(Math.floor(t));
-          // Move playhead on the timeline bar
           const bar = document.getElementById('tbar-' + vid);
           const playhead = document.getElementById('tbar-playhead-' + vid);
           const timeLabel = document.getElementById('tbar-time-' + vid);
@@ -2448,18 +2459,26 @@ function startPlayerPoll(vid) {
             playhead.style.display = 'block';
           }
           if (timeLabel) timeLabel.textContent = '▶ ' + fmtSec(Math.floor(t));
-          // Redraw canvas strokes for current time
           redrawCanvas(vid);
-        }
-      } catch(e) {}
-    };
-    window.addEventListener('message', ps.messageListener);
+        }, 250);
+      }
+    }
+  });
+}
+
+function startPlayerPoll(vid) {
+  const ps = getPS(vid);
+  if (typeof YT !== 'undefined' && YT.Player) {
+    createYTPlayer(vid);
+  } else {
+    pendingYTInits.push(vid);
   }
 }
 
 function stopPlayerPoll(vid) {
   const ps = getPS(vid);
   if (ps.pollTimer) { clearInterval(ps.pollTimer); ps.pollTimer = null; }
+  if (ytPlayers[vid]) { try { ytPlayers[vid].destroy(); } catch(e) {} delete ytPlayers[vid]; }
 }
 
 function getCanvasPos(e, canvas) {
