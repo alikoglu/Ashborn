@@ -207,3 +207,20 @@ CREATE INDEX IF NOT EXISTS idx_annotations_vid  ON video_annotations(video_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_ts   ON video_annotations(video_id, timestamp_sec);
 CREATE INDEX IF NOT EXISTS idx_draws_vid        ON video_draws(video_id, start_sec);
 CREATE INDEX IF NOT EXISTS idx_captions_vid     ON video_captions(video_id, start_sec);
+
+-- Migrations: safely add user_id if tables existed before this column was introduced
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_draws' AND column_name='user_id') THEN
+    ALTER TABLE video_draws ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_captions' AND column_name='user_id') THEN
+    ALTER TABLE video_captions ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
+  END IF;
+  -- Drop pos_x / pos_y if they exist (removed from design)
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_captions' AND column_name='pos_x') THEN
+    ALTER TABLE video_captions DROP COLUMN pos_x;
+  END IF;
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_captions' AND column_name='pos_y') THEN
+    ALTER TABLE video_captions DROP COLUMN pos_y;
+  END IF;
+END $$;
