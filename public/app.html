@@ -2643,6 +2643,60 @@ async function deleteCaption(vid, id) {
   updateCaptionSidebar(vid, ps.currentSec || 0);
   refreshDrawList(vid);
 }
+
+function setTool(vid, tool) {
+  const ps = getPS(vid);
+  ps.tool = tool;
+  const canvasWrap = document.getElementById('canvas-wrap-' + vid);
+  if (canvasWrap) {
+    canvasWrap.classList.remove('drawing', 'text-mode');
+    if (tool === 'pen') canvasWrap.classList.add('drawing');
+    if (tool === 'text') canvasWrap.classList.add('text-mode');
+  }
+  ['pen', 'text', 'none'].forEach(t => {
+    const btn = document.getElementById('tool-' + t + '-' + vid);
+    if (btn) btn.classList.toggle('active', t === tool);
+  });
+}
+
+function setDrawColor(vid, color, el) {
+  getPS(vid).color = color;
+  const wrap = document.getElementById('player-wrap-' + vid);
+  if (wrap) wrap.querySelectorAll('.color-swatch').forEach(s => {
+    s.classList.toggle('active', s.dataset.color === color);
+  });
+}
+
+function setPenWidth(vid, w) {
+  getPS(vid).width = parseInt(w) || 4;
+}
+
+function undoLastDraw(vid) {
+  const ps = getPS(vid);
+  const last = ps.draws.pop();
+  if (!last) return;
+  api('DELETE', '/videos/' + vid + '/draws/' + last.id).catch(() => {});
+  redrawCanvas(vid);
+  refreshDrawList(vid);
+}
+
+async function clearAllDraws(vid) {
+  if (!confirm('Clear all drawn strokes for this video?')) return;
+  const ps = getPS(vid);
+  await Promise.all(ps.draws.map(d => api('DELETE', '/videos/' + vid + '/draws/' + d.id).catch(() => {})));
+  ps.draws = [];
+  redrawCanvas(vid);
+  refreshDrawList(vid);
+}
+
+function autoFillCapStart(vid) {
+  const ps = getPS(vid);
+  const t = ps.currentSec || 0;
+  const startEl = document.getElementById('cap-start-' + vid);
+  const endEl = document.getElementById('cap-end-' + vid);
+  if (startEl && !startEl.value) startEl.value = t.toFixed(1);
+  if (endEl && !endEl.value) endEl.value = (t + 4).toFixed(1);
+}
 </script>
 </body>
 </html>
