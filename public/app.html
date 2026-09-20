@@ -2404,6 +2404,16 @@ async function initPlayerOverlay(vid) {
     .then(data => { ps.draws = data.draws || []; ps.captions = data.captions || []; refreshDrawList(vid); redrawCanvas(vid); })
     .catch(() => {});
 
+  // Debug: draw a red test line to confirm canvas renders
+  const dbgCtx = canvas.getContext('2d');
+  dbgCtx.strokeStyle = '#ff0000';
+  dbgCtx.lineWidth = 8;
+  dbgCtx.beginPath();
+  dbgCtx.moveTo(40, 40);
+  dbgCtx.lineTo(300, 200);
+  dbgCtx.stroke();
+  console.log('[ashborn] canvas init — size:', canvas.width, 'x', canvas.height, '| wrap.offsetWidth:', wrap.offsetWidth);
+
   startPlayerPoll(vid);
 }
 
@@ -2462,11 +2472,14 @@ function getCanvasPos(e, canvas) {
 
 function startDraw(e, vid) {
   const ps = getPS(vid);
-  if (ps.tool !== 'pen') return;
   const canvas = document.getElementById('draw-canvas-' + vid);
+  console.log('[ashborn] startDraw — tool:', ps.tool, '| canvas:', canvas?.width+'x'+canvas?.height, '| color:', ps.color, '| drawing:', ps.drawing);
+  if (ps.tool !== 'pen') return;
   if (!canvas) return;
   ps.drawing = true;
-  ps.path = [getCanvasPos(e, canvas)]; // pixel coords
+  const pos = getCanvasPos(e, canvas);
+  console.log('[ashborn] pos:', pos.x.toFixed(1), pos.y.toFixed(1));
+  ps.path = [pos];
   ps.drawStartSec = ps.currentSec || 0;
 }
 
@@ -2476,6 +2489,7 @@ function moveDraw(e, vid) {
   const canvas = document.getElementById('draw-canvas-' + vid);
   if (!canvas) return;
   ps.path.push(getCanvasPos(e, canvas));
+  if (ps.path.length === 3) console.log('[ashborn] moveDraw — 3 pts, canvas:', canvas.width+'x'+canvas.height, '| color:', ps.color);
   // Draw live stroke directly on canvas
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
