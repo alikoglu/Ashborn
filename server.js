@@ -532,11 +532,11 @@ app.get('/videos/:id/draws', async (req, res) => {
 app.post('/videos/:id/draws', async (req, res) => {
   if (!requireAuth(req, res)) return;
   if (!requireRole(req, res, 'editor')) return;
-  const { start_sec, end_sec, color = '#f5a623', width = 3, path_data } = req.body || {};
+  const { start_sec, end_sec, color = '#f5a623', width = 3, path_data, canvas_w = 640, canvas_h = 360 } = req.body || {};
   if (start_sec == null || end_sec == null || !path_data) return sendErr(res, 'start_sec, end_sec and path_data required');
   const row = await one(
-    'INSERT INTO video_draws (video_id, user_id, start_sec, end_sec, color, width, path_data, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
-    [req.params.id, req.session.uid, parseFloat(start_sec), parseFloat(end_sec), color, parseInt(width), path_data, req.session.uid]
+    'INSERT INTO video_draws (video_id, user_id, start_sec, end_sec, color, width, path_data, canvas_w, canvas_h, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
+    [req.params.id, req.session.uid, parseFloat(start_sec), parseFloat(end_sec), color, parseInt(width), path_data, parseInt(canvas_w), parseInt(canvas_h), req.session.uid]
   );
   res.json({ success: true, draw: row });
 });

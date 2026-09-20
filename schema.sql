@@ -213,6 +213,10 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_draws' AND column_name='user_id') THEN
     ALTER TABLE video_draws ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
   END IF;
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_draws' AND column_name='canvas_w') THEN
+    ALTER TABLE video_draws ADD COLUMN canvas_w INTEGER DEFAULT 640;
+    ALTER TABLE video_draws ADD COLUMN canvas_h INTEGER DEFAULT 360;
+  END IF;
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_captions' AND column_name='user_id') THEN
     ALTER TABLE video_captions ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
   END IF;
