@@ -1498,8 +1498,8 @@ function renderExpand(d){
 
       <div class="xtabs" onclick="event.stopPropagation()">
         <div class="xtab active" onclick="switchXTab(this,'${vid}','stats')">Stats</div>
-        <div class="xtab" onclick="switchXTab(this,'${vid}','timeline')">Timeline ${anns.length?'<span style='color:var(--ember);font-size:.6rem;'>'+anns.length+'</span>':''}</div>
-        <div class="xtab" onclick="switchXTab(this,'${vid}','review')">Review ${review.content_skeleton?'<span style='color:var(--green);font-size:.6rem;'>✓</span>':''}</div>
+        <div class="xtab" onclick="switchXTab(this,'${vid}','timeline')">Timeline ${anns.length?'<span style="color:var(--ember);font-size:.6rem;">'+anns.length+'</span>':''}</div>
+        <div class="xtab" onclick="switchXTab(this,'${vid}','review')">Review ${review.content_skeleton?'<span style="color:var(--green);font-size:.6rem;">✓</span>':''}</div>
       </div>
 
       <!-- STATS TAB -->
