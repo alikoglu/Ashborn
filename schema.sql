@@ -158,16 +158,42 @@ CREATE TABLE IF NOT EXISTS video_annotations (
 
 CREATE TABLE IF NOT EXISTS video_review (
   video_id              TEXT PRIMARY KEY,
-  content_skeleton      TEXT DEFAULT '',   -- linear-story|challenge-loop|tutorial-steps|reaction|vlog|hybrid
-  thumbnail_promise     TEXT DEFAULT '',   -- delivered|partial|bait-and-switch
-  ending_style          TEXT DEFAULT '',   -- cliffhanger|resolution|next-video-tease|abrupt
-  creator_presence      TEXT DEFAULT '',   -- high-energy-oncam|voiceover-only|mixed|commentary
-  rewatchability        TEXT DEFAULT '',   -- high|medium|low
-  info_density          TEXT DEFAULT '',   -- high|medium|low
-  benchmark_tier        TEXT DEFAULT '',   -- outlier|benchmark|control
+  content_skeleton      TEXT DEFAULT '',
+  thumbnail_promise     TEXT DEFAULT '',
+  ending_style          TEXT DEFAULT '',
+  creator_presence      TEXT DEFAULT '',
+  rewatchability        TEXT DEFAULT '',
+  info_density          TEXT DEFAULT '',
+  benchmark_tier        TEXT DEFAULT '',
   general_notes         TEXT DEFAULT '',
   updated_by            TEXT NOT NULL DEFAULT '',
   updated_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS video_draws (
+  id            SERIAL PRIMARY KEY,
+  video_id      TEXT NOT NULL,
+  start_sec     REAL NOT NULL,
+  end_sec       REAL NOT NULL,
+  color         TEXT DEFAULT '#f5a623',
+  width         INTEGER DEFAULT 3,
+  path_data     TEXT NOT NULL,
+  created_by    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS video_captions (
+  id            SERIAL PRIMARY KEY,
+  video_id      TEXT NOT NULL,
+  start_sec     REAL NOT NULL,
+  end_sec       REAL NOT NULL,
+  caption_text  TEXT NOT NULL,
+  pos_x         REAL DEFAULT 50,
+  pos_y         REAL DEFAULT 85,
+  color         TEXT DEFAULT '#ffffff',
+  font_size     INTEGER DEFAULT 16,
+  created_by    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions(user_id);
@@ -179,3 +205,5 @@ CREATE INDEX IF NOT EXISTS idx_ai_usage_user    ON ai_usage(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_videos_created   ON videos(created_at);
 CREATE INDEX IF NOT EXISTS idx_annotations_vid  ON video_annotations(video_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_ts   ON video_annotations(video_id, timestamp_sec);
+CREATE INDEX IF NOT EXISTS idx_draws_vid        ON video_draws(video_id, start_sec);
+CREATE INDEX IF NOT EXISTS idx_captions_vid     ON video_captions(video_id, start_sec);
