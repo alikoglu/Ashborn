@@ -1502,46 +1502,80 @@ async function loadAnnotations(videoId){
 function buildTimelineHTML(vid, secs, anns, canEdit, videoLink) {
   if (!secs) return '<p style="font-size:.75rem;color:var(--smoke);">No video length data — analyze this video first to enable the timeline.</p>';
 
-  // Extract YouTube video ID from link
   const ytIdMatch = (videoLink||'').match(/(?:v=|\/shorts\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
   const ytId = ytIdMatch ? ytIdMatch[1] : null;
 
-  // View toggle
-  const toggle = '<div class="player-view-toggle">' +
-    '<button class="pvt-btn active" id="pvt-bar-' + vid + '" data-vid="' + vid + '" data-view="bar" onclick="switchPlayerView(this.dataset.vid,this.dataset.view)">📊 Timeline bar</button>' +
-    (ytId ? '<button class="pvt-btn" id="pvt-player-' + vid + '" data-vid="' + vid + '" data-view="player" onclick="switchPlayerView(this.dataset.vid,this.dataset.view)">▶ Player + overlay</button>' : '') +
-    '</div>' +
-    '<div id="pview-bar-' + vid + '">' + buildBarHTML(vid, secs, anns, canEdit) + '</div>' +
-    (ytId ? '<div id="pview-player-' + vid + '" style="display:none;">' + buildPlayerHTML(vid, ytId, secs, anns, canEdit) + '</div>' : '');
-  return toggle;
-}
-
-function buildBarHTML(vid, secs, anns, canEdit) {
-  if (!secs) return '';
-  
-  // Build marker dots
+  // Marker dots for the bar
   const markerDots = anns.map(a => {
     const pct = (a.timestamp_sec / secs * 100).toFixed(2);
     const col = MARKER_COLORS[a.marker_type] || '#9e9b92';
     return '<div class="tmarker" style="left:' + pct + '%;color:' + col + ';" data-ann-id="' + a.id + '" data-ts="' + a.timestamp_sec + '" data-type="' + a.marker_type + '" data-note="' + esc(a.note) + '" onmouseenter="showMarkerTip(this)" onmouseleave="hideMarkerTip(this)" onclick="event.stopPropagation()"><div class="tmarker-dot"></div></div>';
   }).join('');
 
-  // Build legend
   const legend = Object.entries(MARKER_COLORS).map(([k,c]) =>
     '<span class="tleg"><span class="tleg-dot" style="background:' + c + ';"></span>' + MARKER_LABELS[k] + '</span>'
   ).join('');
 
-  // Build marker type options
   const typeOptions = Object.entries(MARKER_LABELS).map(([k,l]) =>
     '<option value="' + k + '">' + l + '</option>'
   ).join('');
 
-  // Build add-row (editors only)
+  const DRAW_COLORS = ['#f5a623','#e8622a','#4caf50','#4a9eff','#9b6dff','#ffffff','#ffab91','#26c6a6'];
+  const swatches = DRAW_COLORS.map(c =>
+    '<div class="color-swatch active" style="background:' + c + ';" data-color="' + c + '" data-vid="' + vid + '" onclick="setDrawColor(this.dataset.vid,this.dataset.color,this)" title="' + c + '"></div>'
+  ).join('');
+
+  // ── Video player section (only if YouTube ID exists) ──────────
+  const playerSection = ytId ? (
+    '<div class="player-wrap" id="player-wrap-' + vid + '">' +
+    '<iframe id="yt-player-' + vid + '" src="https://www.youtube.com/embed/' + ytId + '?enablejsapi=1&origin=' + location.origin + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>' +
+    '<div class="player-canvas-wrap drawing" id="canvas-wrap-' + vid + '">' +
+    '<canvas id="draw-canvas-' + vid + '"></canvas>' +
+    '</div>' +
+    '</div>' +
+    (canEdit ?
+      '<div class="player-controls">' +
+      '<button class="tool-btn active" id="tool-pen-' + vid + '" data-vid="' + vid + '" data-tool="pen" onclick="setTool(this.dataset.vid,this.dataset.tool)">✏ Pen</button>' +
+      '<button class="tool-btn" id="tool-none-' + vid + '" data-vid="' + vid + '" data-tool="none" onclick="setTool(this.dataset.vid,this.dataset.tool)">↖ Off</button>' +
+      '<div style="width:1px;height:18px;background:var(--dust);margin:0 2px;flex-shrink:0;"></div>' +
+      swatches +
+      '<div style="width:1px;height:18px;background:var(--dust);margin:0 2px;flex-shrink:0;"></div>' +
+      '<select id="pen-width-' + vid + '" data-vid="' + vid + '" style="width:60px;font-size:.72rem;padding:4px;" onchange="setPenWidth(this.dataset.vid,this.value)">' +
+      '<option value="2">Thin</option><option value="4" selected>Med</option><option value="7">Thick</option>' +
+      '</select>' +
+      '<button class="tool-btn" data-vid="' + vid + '" onclick="undoLastDraw(this.dataset.vid)">↩ Undo</button>' +
+      '<button class="tool-btn" data-vid="' + vid + '" onclick="clearAllDraws(this.dataset.vid)">🗑 Clear</button>' +
+      '<span class="player-time-display" id="player-time-' + vid + '">0:00</span>' +
+      '</div>'
+    : '<div style="font-size:.68rem;color:var(--smoke);padding:.25rem 0;">View only — editors can draw annotations.</div>')
+  ) : '<p style="font-size:.75rem;color:var(--smoke);margin-bottom:.5rem;">No YouTube link found for this video — cannot embed player.</p>';
+
+  // ── Unified timeline bar (scrubs with video) ──────────────────
+  const timelineBar = (
+    '<div class="timeline-wrap" style="margin-top:.6rem;">' +
+    '<div class="timeline-label">' +
+    '<span>0:00</span>' +
+    '<span id="tbar-time-' + vid + '" style="font-family:var(--font-m);font-size:.68rem;color:var(--ember);">▶ 0:00</span>' +
+    '<span>' + fmtSec(secs) + '</span>' +
+    '</div>' +
+    '<div class="timeline-bar" id="tbar-' + vid + '" data-vid="' + vid + '" data-secs="' + secs + '"' +
+    ' onclick="timelineClick(event,this)" onmousemove="timelineHover(event,this)" onmouseleave="timelineLeave(this)">' +
+    '<div class="timeline-bar-fill"></div>' +
+    markerDots +
+    // Playhead indicator
+    '<div id="tbar-playhead-' + vid + '" style="position:absolute;top:0;bottom:0;width:2px;background:var(--ember);pointer-events:none;display:none;transform:translateX(-50%);"></div>' +
+    '<div id="thover-' + vid + '" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.2);pointer-events:none;display:none;"></div>' +
+    '</div>' +
+    '<div class="timeline-legend">' + legend + '</div>' +
+    '</div>'
+  );
+
+  // ── Marker add row (click bar sets time automatically) ────────
   const addRow = canEdit ? (
-    '<div class="timeline-add-row">' +
+    '<div class="timeline-add-row" style="margin-top:.5rem;">' +
     '<div style="display:flex;flex-direction:column;gap:3px;">' +
-    '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Time (mm:ss or seconds)</label>' +
-    '<input type="text" id="tann-time-' + vid + '" placeholder="e.g. 0:45 or 45" style="width:120px;"/>' +
+    '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Time — click bar or type</label>' +
+    '<input type="text" id="tann-time-' + vid + '" placeholder="0:45" style="width:90px;"/>' +
     '</div>' +
     '<div style="display:flex;flex-direction:column;gap:3px;">' +
     '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Marker type</label>' +
@@ -1549,73 +1583,22 @@ function buildBarHTML(vid, secs, anns, canEdit) {
     '</div>' +
     '<div style="flex:1;display:flex;flex-direction:column;gap:3px;">' +
     '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Note (optional)</label>' +
-    '<input type="text" id="tann-note-' + vid + '" placeholder="e.g. Creator zooms into build — forces refocus"/>' +
+    '<input type="text" id="tann-note-' + vid + '" placeholder="e.g. Creator zooms into build"/>' +
     '</div>' +
     '<button class="btn btn-sm btn-primary" data-vid="' + vid + '" onclick="addAnnotation(this.dataset.vid)">+ Add marker</button>' +
     '</div>'
   ) : '';
 
   return (
-    '<div class="timeline-wrap">' +
-    '<div class="timeline-label"><span>0:00</span><span>' + fmtSec(secs) + '</span></div>' +
-    '<div class="timeline-bar" id="tbar-' + vid + '" data-vid="' + vid + '" data-secs="' + secs + '" onclick="timelineClick(event,this)" onmousemove="timelineHover(event,this)" onmouseleave="timelineLeave(this)">' +
-    '<div class="timeline-bar-fill"></div>' +
-    markerDots +
-    '<div id="thover-' + vid + '" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.2);pointer-events:none;display:none;"></div>' +
-    '</div>' +
-    '<div class="timeline-legend">' + legend + '</div>' +
-    '</div>' +
+    playerSection +
+    timelineBar +
     addRow +
-    '<div class="annotation-list" id="ann-list-' + vid + '">' + renderAnnList(anns, vid, canEdit) + '</div>'
+    '<div class="annotation-list" id="ann-list-' + vid + '" style="margin-top:.5rem;">' + renderAnnList(anns, vid, canEdit) + '</div>' +
+    '<div id="draw-list-' + vid + '" style="display:flex;flex-direction:column;gap:.3rem;margin-top:.35rem;max-height:120px;overflow-y:auto;"></div>'
   );
 }
 
-function buildPlayerHTML(vid, ytId, secs, anns, canEdit) {
-  const DRAW_COLORS = ['#f5a623','#e8622a','#4caf50','#4a9eff','#9b6dff','#ffffff','#ffab91','#26c6a6'];
-  const swatches = DRAW_COLORS.map(c =>
-    '<div class="color-swatch active" style="background:' + c + ';" data-color="' + c + '" data-vid="' + vid + '" onclick="setDrawColor(this.dataset.vid,this.dataset.color,this)" title="' + c + '"></div>'
-  ).join('');
 
-  const captionControls = canEdit ? (
-    '<div style="margin-top:.75rem;border-top:1px solid var(--dust);padding-top:.6rem;">' +
-    '<div style="font-size:.65rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);margin-bottom:.4rem;">Add caption</div>' +
-    '<div class="caption-input-row">' +
-    '<input type="text" id="cap-text-' + vid + '" placeholder="Caption text..." style="flex:1;font-size:.8rem;" data-vid="' + vid + '" onfocus="autoFillCapStart(this.dataset.vid)"/>' +
-    '<div style="display:flex;flex-direction:column;gap:2px;"><label style="font-size:.58rem;color:var(--smoke);font-family:var(--font-m);">Start (s)</label><input type="number" id="cap-start-' + vid + '" style="width:70px;font-size:.78rem;" step="0.5" min="0"/></div>' +
-    '<div style="display:flex;flex-direction:column;gap:2px;"><label style="font-size:.58rem;color:var(--smoke);font-family:var(--font-m);">End (s)</label><input type="number" id="cap-end-' + vid + '" style="width:70px;font-size:.78rem;" step="0.5" min="0"/></div>' +
-    '<button class="btn btn-sm btn-primary" data-vid="' + vid + '" onclick="addCaption(this.dataset.vid)">+ Add</button>' +
-    '</div>' +
-    '</div>'
-  ) : '';
-
-  return (
-    '<div class="player-wrap" id="player-wrap-' + vid + '">' +
-    '<iframe id="yt-player-' + vid + '" src="https://www.youtube.com/embed/' + ytId + '?enablejsapi=1&origin=' + location.origin + '" allow="autoplay; encrypted-media" allowfullscreen></iframe>' +
-    '<div class="player-canvas-wrap" id="canvas-wrap-' + vid + '">' +
-    '<canvas id="draw-canvas-' + vid + '"></canvas>' +
-    '<div class="caption-layer" id="caption-layer-' + vid + '"></div>' +
-    '</div>' +
-    '</div>' +
-    (canEdit ? '<div class="player-controls">' +
-    '<button class="tool-btn active" id="tool-pen-' + vid + '" data-vid="' + vid + '" data-tool="pen" onclick="setTool(this.dataset.vid,this.dataset.tool)">✏ Pen</button>' +
-    '<button class="tool-btn" id="tool-text-' + vid + '" data-vid="' + vid + '" data-tool="text" onclick="setTool(this.dataset.vid,this.dataset.tool)">T Text</button>' +
-    '<button class="tool-btn" id="tool-none-' + vid + '" data-vid="' + vid + '" data-tool="none" onclick="setTool(this.dataset.vid,this.dataset.tool)">↖ Off</button>' +
-    '<div style="width:1px;height:18px;background:var(--dust);margin:0 2px;"></div>' +
-    swatches +
-    '<div style="width:1px;height:18px;background:var(--dust);margin:0 2px;"></div>' +
-    '<select id="pen-width-' + vid + '" data-vid="' + vid + '" style="width:60px;font-size:.72rem;padding:4px;" onchange="setPenWidth(this.dataset.vid,this.value)">' +
-    '<option value="2">Thin</option><option value="4" selected>Med</option><option value="7">Thick</option>' +
-    '</select>' +
-    '<button class="tool-btn" data-vid="' + vid + '" onclick="undoLastDraw(this.dataset.vid)">↩ Undo</button>' +
-    '<button class="tool-btn" data-vid="' + vid + '" onclick="clearAllDraws(this.dataset.vid)">🗑 Clear</button>' +
-    '<span class="player-time-display" id="player-time-' + vid + '">0:00</span>' +
-    '</div>' : '') +
-    captionControls +
-    '<div id="cap-now-' + vid + '" style="display:none;font-size:.85rem;font-weight:500;padding:8px 12px;background:rgba(74,158,255,.1);border:1px solid rgba(74,158,255,.25);border-radius:var(--r);margin-top:.5rem;color:#90caf9;"></div>' +
-    '<div style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);margin-top:.6rem;margin-bottom:.25rem;">Saved annotations</div>' +
-    '<div id="draw-list-' + vid + '" style="display:flex;flex-direction:column;gap:.3rem;max-height:160px;overflow-y:auto;"></div>'
-  );
-}
 
 function renderExpand(d){
   const der=computeDerived(d);
@@ -1822,11 +1805,25 @@ function switchXTab(el, vid, tab){
 function timelineClick(e,bar){
   e.stopPropagation();
   const rect=bar.getBoundingClientRect();
-  const pct=(e.clientX-rect.left)/rect.width;
-  const secs=Math.round(pct*parseInt(bar.dataset.secs));
+  const pct=Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width));
+  const totalSecs=parseInt(bar.dataset.secs)||1;
+  const secs=Math.round(pct*totalSecs);
   const vid=bar.dataset.vid;
+  // Fill time input for quick marker drop
   const timeInput=document.getElementById('tann-time-'+vid);
   if(timeInput)timeInput.value=fmtSec(secs);
+  // Seek YouTube player
+  const iframe=document.getElementById('yt-player-'+vid);
+  if(iframe&&iframe.contentWindow){
+    try{iframe.contentWindow.postMessage(JSON.stringify({event:'command',func:'seekTo',args:[secs,true]}),'*');}catch(err){}
+  }
+  // Move playhead immediately without waiting for poll
+  const playhead=document.getElementById('tbar-playhead-'+vid);
+  const timeLabel=document.getElementById('tbar-time-'+vid);
+  if(playhead){playhead.style.left=(pct*100)+'%';playhead.style.display='block';}
+  if(timeLabel)timeLabel.textContent='▶ '+fmtSec(secs);
+  const ps=getPS(vid);
+  if(ps){ps.currentSec=secs;redrawCanvas(vid);}
 }
 
 function timelineHover(e,bar){
@@ -2434,10 +2431,22 @@ function startPlayerPoll(vid) {
         if (data.event === 'infoDelivery' && data.info && data.info.currentTime != null) {
           const t = data.info.currentTime;
           ps.currentSec = t;
+          // Update inline time display in pen controls
           const display = document.getElementById('player-time-' + vid);
           if (display) display.textContent = fmtSec(Math.floor(t));
+          // Move playhead on the timeline bar
+          const bar = document.getElementById('tbar-' + vid);
+          const playhead = document.getElementById('tbar-playhead-' + vid);
+          const timeLabel = document.getElementById('tbar-time-' + vid);
+          if (bar && playhead) {
+            const totalSecs = parseInt(bar.dataset.secs) || 1;
+            const pct = Math.min(100, (t / totalSecs) * 100);
+            playhead.style.left = pct + '%';
+            playhead.style.display = 'block';
+          }
+          if (timeLabel) timeLabel.textContent = '▶ ' + fmtSec(Math.floor(t));
+          // Redraw canvas strokes for current time
           redrawCanvas(vid);
-          updateCaptionSidebar(vid, t);
         }
       } catch(e) {}
     };
@@ -2569,7 +2578,6 @@ function redrawCanvas(vid) {
   const ps = getPS(vid);
   redrawSavedStrokes(vid, ctx, dw, dh, ps.currentSec || 0);
   ctx.restore();
-  updateCaptionSidebar(vid, ps.currentSec || 0);
 }
 
 // Caption sidebar: shows current caption as highlighted text beside the video
