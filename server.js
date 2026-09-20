@@ -452,6 +452,68 @@ app.delete('/admin/workspaces/:id/members/:uid', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// TIMELINE ANNOTATIONS + VIDEO REVIEW
+// ══════════════════════════════════════════════════════════════
+
+const MARKER_TYPES = [
+  'hook_end','scene_cut','pattern_interrupt','thumbnail_callback',
+  'eye_focus','emotional_peak','pacing_dip','escalation','cta','other'
+];
+
+app.get('/videos/:id/annotations', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  const annotations = await q(
+    'SELECT * FROM video_annotations WHERE video_id=$1 ORDER BY timestamp_sec ASC',
+    [req.params.id]
+  );
+  const review = await one('SELECT * FROM video_review WHERE video_id=$1', [req.params.id]);
+  res.json({ annotations, review: review || null });
+});
+
+app.post('/videos/:id/annotations', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'editor')) return;
+  const { timestamp_sec, marker_type, note = '' } = req.body || {};
+  if (timestamp_sec == null || !marker_type) return sendErr(res, 'timestamp_sec and marker_type required');
+  if (!MARKER_TYPES.includes(marker_type)) return sendErr(res, 'Invalid marker_type');
+  const row = await one(
+    'INSERT INTO video_annotations (video_id, timestamp_sec, marker_type, note, created_by) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+    [req.params.id, parseInt(timestamp_sec), marker_type, note.slice(0, 500), req.session.uid]
+  );
+  res.json({ success: true, annotation: row });
+});
+
+app.delete('/videos/:id/annotations/:aid', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'editor')) return;
+  await q('DELETE FROM video_annotations WHERE id=$1 AND video_id=$2', [req.params.aid, req.params.id]);
+  res.json({ success: true });
+});
+
+app.post('/videos/:id/review', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'editor')) return;
+  const {
+    content_skeleton = '', thumbnail_promise = '', ending_style = '',
+    creator_presence = '', rewatchability = '', info_density = '',
+    benchmark_tier = '', general_notes = ''
+  } = req.body || {};
+  await q(
+    `INSERT INTO video_review
+       (video_id, content_skeleton, thumbnail_promise, ending_style, creator_presence,
+        rewatchability, info_density, benchmark_tier, general_notes, updated_by, updated_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+     ON CONFLICT (video_id) DO UPDATE SET
+       content_skeleton=$2, thumbnail_promise=$3, ending_style=$4, creator_presence=$5,
+       rewatchability=$6, info_density=$7, benchmark_tier=$8, general_notes=$9,
+       updated_by=$10, updated_at=NOW()`,
+    [req.params.id, content_skeleton, thumbnail_promise, ending_style, creator_presence,
+     rewatchability, info_density, benchmark_tier, general_notes.slice(0, 2000), req.session.uid]
+  );
+  res.json({ success: true });
+});
+
+// ══════════════════════════════════════════════════════════════
 // CHANNEL MONITOR (admin)
 // ══════════════════════════════════════════════════════════════
 

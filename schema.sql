@@ -144,6 +144,32 @@ CREATE TABLE IF NOT EXISTS video_velocity (
   PRIMARY KEY (video_id, snapshot_type)
 );
 
+CREATE TABLE IF NOT EXISTS video_annotations (
+  id            SERIAL PRIMARY KEY,
+  video_id      TEXT NOT NULL,
+  timestamp_sec INTEGER NOT NULL,          -- seconds into video
+  marker_type   TEXT NOT NULL,             -- see MARKER_TYPES below
+  note          TEXT DEFAULT '',
+  created_by    TEXT NOT NULL,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+-- marker_type values: scene_cut | pattern_interrupt | thumbnail_callback |
+--   eye_focus | emotional_peak | pacing_dip | escalation | cta | hook_end | other
+
+CREATE TABLE IF NOT EXISTS video_review (
+  video_id              TEXT PRIMARY KEY,
+  content_skeleton      TEXT DEFAULT '',   -- linear-story|challenge-loop|tutorial-steps|reaction|vlog|hybrid
+  thumbnail_promise     TEXT DEFAULT '',   -- delivered|partial|bait-and-switch
+  ending_style          TEXT DEFAULT '',   -- cliffhanger|resolution|next-video-tease|abrupt
+  creator_presence      TEXT DEFAULT '',   -- high-energy-oncam|voiceover-only|mixed|commentary
+  rewatchability        TEXT DEFAULT '',   -- high|medium|low
+  info_density          TEXT DEFAULT '',   -- high|medium|low
+  benchmark_tier        TEXT DEFAULT '',   -- outlier|benchmark|control
+  general_notes         TEXT DEFAULT '',
+  updated_by            TEXT NOT NULL DEFAULT '',
+  updated_at            TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_wm_user          ON workspace_members(user_id);
@@ -151,3 +177,5 @@ CREATE INDEX IF NOT EXISTS idx_vw_workspace     ON video_workspaces(workspace_id
 CREATE INDEX IF NOT EXISTS idx_vw_video         ON video_workspaces(video_id);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user    ON ai_usage(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_videos_created   ON videos(created_at);
+CREATE INDEX IF NOT EXISTS idx_annotations_vid  ON video_annotations(video_id);
+CREATE INDEX IF NOT EXISTS idx_annotations_ts   ON video_annotations(video_id, timestamp_sec);
