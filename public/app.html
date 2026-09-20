@@ -1260,7 +1260,12 @@ async function analyzeBatch(){
 
 // ─── LOAD WORKSPACE VIDEOS ────────────────────────────────────
 async function loadWorkspaceVideos() {
-  if (!currentWorkspace) { workspaceVideos=[]; return; }
+  if (!currentWorkspace) {
+    // Auto-select first available workspace if none is active
+    const ws = SESSION?.workspaces?.[0];
+    if (ws) { currentWorkspace = ws; updateWsBadge(); renderWsSidebar(); }
+    else { workspaceVideos=[]; return; }
+  }
   try {
     const data = await api('GET', `/workspaces/${currentWorkspace.id}/videos`);
     workspaceVideos = (data.videos||[]).map(v=>({...v,tags:typeof v.tags==='string'?JSON.parse(v.tags||'[]'):v.tags||[]}));
@@ -1468,6 +1473,60 @@ async function loadAnnotations(videoId){
   }catch(e){return{annotations:[],review:null};}
 }
 
+function buildTimelineHTML(vid, secs, anns, canEdit) {
+  if (!secs) return '<p style="font-size:.75rem;color:var(--smoke);">No video length data — analyze this video first to enable the timeline.</p>';
+  
+  // Build marker dots
+  const markerDots = anns.map(a => {
+    const pct = (a.timestamp_sec / secs * 100).toFixed(2);
+    const col = MARKER_COLORS[a.marker_type] || '#9e9b92';
+    return '<div class="tmarker" style="left:' + pct + '%;color:' + col + ';" data-ann-id="' + a.id + '" data-ts="' + a.timestamp_sec + '" data-type="' + a.marker_type + '" data-note="' + esc(a.note) + '" onmouseenter="showMarkerTip(this)" onmouseleave="hideMarkerTip(this)" onclick="event.stopPropagation()"><div class="tmarker-dot"></div></div>';
+  }).join('');
+
+  // Build legend
+  const legend = Object.entries(MARKER_COLORS).map(([k,c]) =>
+    '<span class="tleg"><span class="tleg-dot" style="background:' + c + ';"></span>' + MARKER_LABELS[k] + '</span>'
+  ).join('');
+
+  // Build marker type options
+  const typeOptions = Object.entries(MARKER_LABELS).map(([k,l]) =>
+    '<option value="' + k + '">' + l + '</option>'
+  ).join('');
+
+  // Build add-row (editors only)
+  const addRow = canEdit ? (
+    '<div class="timeline-add-row">' +
+    '<div style="display:flex;flex-direction:column;gap:3px;">' +
+    '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Time (mm:ss or seconds)</label>' +
+    '<input type="text" id="tann-time-' + vid + '" placeholder="e.g. 0:45 or 45" style="width:120px;"/>' +
+    '</div>' +
+    '<div style="display:flex;flex-direction:column;gap:3px;">' +
+    '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Marker type</label>' +
+    '<select id="tann-type-' + vid + '">' + typeOptions + '</select>' +
+    '</div>' +
+    '<div style="flex:1;display:flex;flex-direction:column;gap:3px;">' +
+    '<label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Note (optional)</label>' +
+    '<input type="text" id="tann-note-' + vid + '" placeholder="e.g. Creator zooms into build — forces refocus"/>' +
+    '</div>' +
+    '<button class="btn btn-sm btn-primary" data-vid="' + vid + '" onclick="addAnnotation(this.dataset.vid)">+ Add marker</button>' +
+    '</div>'
+  ) : '';
+
+  return (
+    '<div class="timeline-wrap">' +
+    '<div class="timeline-label"><span>0:00</span><span>' + fmtSec(secs) + '</span></div>' +
+    '<div class="timeline-bar" id="tbar-' + vid + '" data-vid="' + vid + '" data-secs="' + secs + '" onclick="timelineClick(event,this)" onmousemove="timelineHover(event,this)" onmouseleave="timelineLeave(this)">' +
+    '<div class="timeline-bar-fill"></div>' +
+    markerDots +
+    '<div id="thover-' + vid + '" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.2);pointer-events:none;display:none;"></div>' +
+    '</div>' +
+    '<div class="timeline-legend">' + legend + '</div>' +
+    '</div>' +
+    addRow +
+    '<div class="annotation-list" id="ann-list-' + vid + '">' + renderAnnList(anns, vid, canEdit) + '</div>'
+  );
+}
+
 function renderExpand(d){
   const der=computeDerived(d);
   const cell=(l,v)=>`<div class="xcell"><div class="xl">${l}</div><div class="xv" title="${esc(v??'—')}">${esc(v??'—')||'—'}</div></div>`;
@@ -1485,7 +1544,7 @@ function renderExpand(d){
 
   // Build tier badge
   const tier=review.benchmark_tier||'';
-  const tierBadge=tier?`<span class="tier-badge tier-${tier}">${tier==='outlier'?'⬆ Outlier':tier==='benchmark'?'⬇ Benchmark':'◎ Control'}</span>`:'';
+  const tierBadge=tier?`<span id="tier-badge-${vid}" class="tier-badge tier-${tier}">${tier==='outlier'?'⬆ Outlier':tier==='benchmark'?'⬇ Benchmark':'◎ Control'}</span>`:`<span id="tier-badge-${vid}" class="tier-badge" style="display:none;"></span>`;
 
   return `<div class="xwrap">
     <img class="xthumb" src="${esc(d.thumbnail_url)}" alt="" onerror="this.style.display='none'"/>
@@ -1546,44 +1605,7 @@ function renderExpand(d){
 
       <!-- TIMELINE TAB -->
       <div class="xtab-pane" id="xtab-timeline-${vid}" onclick="event.stopPropagation()">
-        ${secs>0?`
-        <div class="timeline-wrap">
-          <div class="timeline-label"><span>0:00</span><span>${fmtSec(secs)}</span></div>
-          <div class="timeline-bar" id="tbar-${vid}" data-vid="${vid}" data-secs="${secs}"
-            onclick="timelineClick(event,this)"
-            onmousemove="timelineHover(event,this)" onmouseleave="timelineLeave(this)">
-            <div class="timeline-bar-fill"></div>
-'+anns.map(a=>{
-              const pct=(a.timestamp_sec/secs*100).toFixed(2);
-              const col=MARKER_COLORS[a.marker_type]||'#9e9b92';
-              return '<div class="tmarker" style="left:'+pct+'%;color:'+col+';" data-ann-id="'+a.id+'" data-ts="'+a.timestamp_sec+'" data-type="'+a.marker_type+'" data-note="'+esc(a.note)+'"'+
-                ' onmouseenter="showMarkerTip(this)" onmouseleave="hideMarkerTip(this)" onclick="event.stopPropagation()">'+
-                '<div class="tmarker-dot"></div></div>';
-            }).join('')+'
-            <div id="thover-${vid}" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.2);pointer-events:none;display:none;"></div>
-          </div>
-          <div class="timeline-legend">'+Object.entries(MARKER_COLORS).map(([k,c])=>'<span class="tleg"><span class="tleg-dot" style="background:'+c+';"></span>'+MARKER_LABELS[k]+'</span>').join('')+'</div>
-        </div>
-        ${canEdit?`<div class="timeline-add-row">
-          <div style="display:flex;flex-direction:column;gap:3px;">
-            <label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Time (mm:ss or seconds)</label>
-            <input type="text" id="tann-time-${vid}" placeholder="e.g. 0:45 or 45" style="width:120px;"/>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:3px;">
-            <label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Marker type</label>
-            <select id="tann-type-${vid}">
-              ${Object.entries(MARKER_LABELS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}
-            </select>
-          </div>
-          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
-            <label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Note (optional)</label>
-            <input type="text" id="tann-note-${vid}" placeholder="e.g. Creator zooms into build — forces refocus"/>
-          </div>
-          <button class="btn btn-sm btn-primary" onclick="addAnnotation('${vid}')">+ Add marker</button>
-        </div>`:''}
-        <div class="annotation-list" id="ann-list-${vid}">
-          ${renderAnnList(anns, vid, canEdit)}
-        </div>`:'<p style="font-size:.75rem;color:var(--smoke);">No video length data — analyze this video first to enable the timeline.</p>'}
+        ${buildTimelineHTML(vid, secs, anns, canEdit)}
       </div>
 
       <!-- REVIEW TAB -->
@@ -1755,22 +1777,36 @@ async function addAnnotation(vid){
   if(secs===null||secs<0){alert('Enter a valid time, e.g. 0:45 or 45');return;}
   if(!type){alert('Select a marker type');return;}
   try{
-    const r=await api('POST','/videos/'+vid+'/annotations',{timestamp_sec:secs,marker_type:type,note});
+    await api('POST','/videos/'+vid+'/annotations',{timestamp_sec:secs,marker_type:type,note});
     delete annCache[vid];
     const fresh=await loadAnnotations(vid);
-    // Update annotation list and re-render timeline markers
-    const listEl=document.getElementById('ann-list-'+vid);
     const canEdit=SESSION?.user?.role==='editor'||SESSION?.user?.role==='admin';
+    // Refresh annotation list
+    const listEl=document.getElementById('ann-list-'+vid);
     if(listEl)listEl.innerHTML=renderAnnList(fresh.annotations,vid,canEdit);
-    // Re-render the whole expanded row to update timeline markers + tab counts
-    const row=document.querySelector('[data-xvid="'+vid+'"]');
-    if(row){
-      const d=workspaceVideos.find(v=>v.video_id===vid);
-      if(d)row.querySelector('td').innerHTML=renderExpand(d);
-      switchXTabById(vid,'timeline');
+    // Add new marker dot to bar directly
+    const bar=document.getElementById('tbar-'+vid);
+    if(bar){
+      const totalSecs=parseInt(bar.dataset.secs)||1;
+      bar.querySelectorAll('.tmarker').forEach(m=>m.remove());
+      fresh.annotations.forEach(a=>{
+        const pct=(a.timestamp_sec/totalSecs*100).toFixed(2);
+        const col=MARKER_COLORS[a.marker_type]||'#9e9b92';
+        const dot=document.createElement('div');
+        dot.className='tmarker';
+        dot.style.cssText='left:'+pct+'%;color:'+col+';position:absolute;top:0;bottom:0;width:2px;cursor:pointer;transform:translateX(-50%);';
+        dot.dataset.annId=a.id; dot.dataset.ts=a.timestamp_sec;
+        dot.dataset.type=a.marker_type; dot.dataset.note=a.note||'';
+        dot.addEventListener('mouseenter',function(){showMarkerTip(this);});
+        dot.addEventListener('mouseleave',function(){hideMarkerTip(this);});
+        dot.addEventListener('click',function(e){e.stopPropagation();});
+        dot.innerHTML='<div class="tmarker-dot"></div>';
+        bar.appendChild(dot);
+      });
     }
-    document.getElementById('tann-time-'+vid).value='';
-    document.getElementById('tann-note-'+vid).value='';
+    const ti=document.getElementById('tann-time-'+vid);
+    const ni=document.getElementById('tann-note-'+vid);
+    if(ti)ti.value=''; if(ni)ni.value='';
   }catch(e){alert('Error: '+e.message);}
 }
 
@@ -1780,12 +1816,13 @@ async function deleteAnnotation(vid,annId){
     await api('DELETE','/videos/'+vid+'/annotations/'+annId);
     delete annCache[vid];
     const fresh=await loadAnnotations(vid);
-    const row=document.querySelector('[data-xvid="'+vid+'"]');
-    if(row){
-      const d=workspaceVideos.find(v=>v.video_id===vid);
-      if(d)row.querySelector('td').innerHTML=renderExpand(d);
-      switchXTabById(vid,'timeline');
-    }
+    const canEdit=SESSION?.user?.role==='editor'||SESSION?.user?.role==='admin';
+    // Remove dot from bar
+    const dot=document.querySelector('.tmarker[data-ann-id="'+annId+'"]');
+    if(dot)dot.remove();
+    // Refresh list
+    const listEl=document.getElementById('ann-list-'+vid);
+    if(listEl)listEl.innerHTML=renderAnnList(fresh.annotations,vid,canEdit);
   }catch(e){alert('Error: '+e.message);}
 }
 
@@ -1820,12 +1857,13 @@ async function saveReview(vid){
     await loadAnnotations(vid);
     if(status)status.textContent='Saved ✓';
     setTimeout(()=>{if(status)status.textContent='';},2000);
-    // Refresh expanded row to update tier badge + tab checkmark
-    const row=document.querySelector('[data-xvid="'+vid+'"]');
-    if(row){
-      const d=workspaceVideos.find(v=>v.video_id===vid);
-      if(d)row.querySelector('td').innerHTML=renderExpand(d);
-      switchXTabById(vid,'review');
+    // Update tier badge in title row without full re-render
+    const tier=payload.benchmark_tier;
+    const tierEl=document.getElementById('tier-badge-'+vid);
+    if(tierEl){
+      tierEl.style.display=tier?'inline-flex':'none';
+      tierEl.className='tier-badge tier-'+tier;
+      tierEl.textContent=tier==='outlier'?'⬆ Outlier':tier==='benchmark'?'⬇ Benchmark':tier==='control'?'◎ Control':'';
     }
   }catch(e){
     if(status)status.textContent='Error: '+e.message;
