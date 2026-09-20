@@ -334,7 +334,7 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
 <body>
 
 <!-- LOGIN -->
-<div class="login-wrap" id="login-screen">
+<div class="login-wrap" id="login-screen" style="display:none;">
   <div class="login-box">
     <div class="login-logo"><span class="dot"></span>Ashborn Studios</div>
     <div class="login-sub">Content Lab</div>
@@ -465,7 +465,7 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
               <button class="btn btn-sm" onclick="toggleColDropdown(event)">⚙ Columns</button>
               <div class="col-dropdown" id="col-dropdown"></div>
             </div>
-            <button class="btn btn-sm" onclick="loadWorkspaceVideos().then(()=>renderDB())">↻ Refresh</button>
+            <button class="btn btn-sm" onclick="loadWorkspaceVideos().then(()=>renderDB())">⟳ Refresh</button>
             <button class="btn btn-sm" id="bulk-add-btn" onclick="bulkAddFiltered()" style="display:none;">＋ Save filtered to workspace</button>
           </div>
         </div>
@@ -1478,7 +1478,7 @@ function renderExpand(d){
   const secs=parseInt(d.video_length_secs)||0;
 
   // Trigger async load (re-renders on complete)
-  if(!cached){loadAnnotations(vid).then(()=>{const row=document.querySelector(`tr.expand-row[data-xvid="${CSS.escape(vid)}"]`);if(row)row.querySelector('td').innerHTML=renderExpand(d);});}
+  if(!cached){loadAnnotations(vid).then(()=>{const row=document.querySelector(`tr.expand-row[data-xvid="${vid.replace(/"/g,'\\"')}"]`);if(row)row.querySelector('td').innerHTML=renderExpand(d);});}
 
   const anns=cached?.annotations||[];
   const review=cached?.review||{};
@@ -1553,17 +1553,16 @@ function renderExpand(d){
             onclick="timelineClick(event,this)"
             onmousemove="timelineHover(event,this)" onmouseleave="timelineLeave(this)">
             <div class="timeline-bar-fill"></div>
-            ${anns.map(a=>{
+'+anns.map(a=>{
               const pct=(a.timestamp_sec/secs*100).toFixed(2);
               const col=MARKER_COLORS[a.marker_type]||'#9e9b92';
-              return `<div class="tmarker" style="left:${pct}%;color:${col};" data-ann-id="${a.id}" data-ts="${a.timestamp_sec}" data-type="${a.marker_type}" data-note="${esc(a.note)}"
-                onmouseenter="showMarkerTip(this)" onmouseleave="hideMarkerTip(this)" onclick="event.stopPropagation()">
-                <div class="tmarker-dot"></div>
-              </div>`;
-            }).join('')}
+              return '<div class="tmarker" style="left:'+pct+'%;color:'+col+';" data-ann-id="'+a.id+'" data-ts="'+a.timestamp_sec+'" data-type="'+a.marker_type+'" data-note="'+esc(a.note)+'"'+
+                ' onmouseenter="showMarkerTip(this)" onmouseleave="hideMarkerTip(this)" onclick="event.stopPropagation()">'+
+                '<div class="tmarker-dot"></div></div>';
+            }).join('')+'
             <div id="thover-${vid}" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.2);pointer-events:none;display:none;"></div>
           </div>
-          <div class="timeline-legend">${Object.entries(MARKER_COLORS).map(([k,c])=>`<span class="tleg"><span class="tleg-dot" style="background:${c};"></span>${MARKER_LABELS[k]}</span>`).join('')}</div>
+          <div class="timeline-legend">'+Object.entries(MARKER_COLORS).map(([k,c])=>'<span class="tleg"><span class="tleg-dot" style="background:'+c+';"></span>'+MARKER_LABELS[k]+'</span>').join('')+'</div>
         </div>
         ${canEdit?`<div class="timeline-add-row">
           <div style="display:flex;flex-direction:column;gap:3px;">
