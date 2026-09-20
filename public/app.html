@@ -265,6 +265,48 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
 .xnote{font-size:.72rem;color:var(--mist);font-style:italic;line-height:1.5;margin-bottom:.5rem;}
 .xactions{display:flex;gap:.5rem;margin-top:.5rem;}
 
+
+/* TIMELINE ANNOTATION */
+.xtabs{display:flex;gap:0;border-bottom:1px solid var(--dust);margin-bottom:.75rem;}
+.xtab{font-size:.72rem;padding:6px 14px;cursor:pointer;color:var(--smoke);border-bottom:2px solid transparent;font-family:var(--font-m);letter-spacing:.06em;transition:color .15s;}
+.xtab:hover{color:var(--white);}
+.xtab.active{color:var(--white);border-bottom-color:var(--ember);}
+.xtab-pane{display:none;}.xtab-pane.active{display:block;}
+
+.timeline-wrap{position:relative;margin:.5rem 0 1rem;}
+.timeline-bar{width:100%;height:36px;background:var(--ash3);border:1px solid var(--dust);border-radius:var(--r);cursor:crosshair;position:relative;overflow:visible;}
+.timeline-bar-fill{position:absolute;top:0;left:0;height:100%;background:linear-gradient(90deg,rgba(232,98,42,.15),rgba(232,98,42,.05));border-radius:var(--r);}
+.timeline-label{display:flex;justify-content:space-between;font-size:.62rem;color:var(--smoke);font-family:var(--font-m);margin-bottom:3px;}
+.tmarker{position:absolute;top:0;bottom:0;width:2px;cursor:pointer;transform:translateX(-50%);transition:opacity .15s;}
+.tmarker:hover{opacity:.7;}
+.tmarker-tip{position:absolute;top:-28px;left:50%;transform:translateX(-50%);background:var(--ash2);border:1px solid var(--dust);border-radius:4px;padding:2px 7px;font-size:.62rem;white-space:nowrap;pointer-events:none;z-index:10;color:var(--white);}
+.tmarker-dot{width:10px;height:10px;border-radius:50%;background:currentColor;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);border:2px solid var(--ash2);}
+.timeline-legend{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.5rem;}
+.tleg{display:inline-flex;align-items:center;gap:.3rem;font-size:.62rem;color:var(--smoke);font-family:var(--font-m);}
+.tleg-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.annotation-list{display:flex;flex-direction:column;gap:.35rem;margin-top:.75rem;}
+.annotation-item{display:flex;align-items:center;gap:.6rem;padding:6px 10px;background:var(--ash3);border:1px solid var(--dust);border-radius:var(--r);font-size:.75rem;}
+.ann-time{font-family:var(--font-m);font-size:.68rem;color:var(--mist);flex-shrink:0;width:38px;}
+.ann-type{font-size:.62rem;padding:2px 7px;border-radius:20px;flex-shrink:0;}
+.ann-note{flex:1;color:var(--mist);}
+.ann-del{font-size:.65rem;color:var(--smoke);cursor:pointer;padding:2px 6px;border:1px solid transparent;border-radius:4px;}
+.ann-del:hover{color:#ffab91;border-color:rgba(232,98,42,.3);}
+.timeline-add-row{display:flex;gap:.5rem;align-items:flex-end;margin-top:.75rem;flex-wrap:wrap;}
+.timeline-add-row select,.timeline-add-row input{font-size:.75rem;padding:6px 10px;}
+
+/* REVIEW FORM */
+.review-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:.75rem;}
+.review-field{display:flex;flex-direction:column;gap:3px;}
+.review-field label{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);}
+.review-field select,.review-field textarea{font-size:.78rem;padding:7px 10px;background:var(--ash3);border:1px solid var(--dust);border-radius:var(--r);color:var(--white);outline:none;font-family:var(--font-b);}
+.review-field select:focus,.review-field textarea:focus{border-color:var(--ember);}
+.review-field textarea{resize:vertical;min-height:64px;}
+.review-field select option{background:var(--ash3);}
+.tier-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.65rem;padding:2px 9px;border-radius:20px;border:1px solid;font-family:var(--font-m);}
+.tier-outlier{background:rgba(76,175,80,.12);color:#a5d6a7;border-color:rgba(76,175,80,.25);}
+.tier-benchmark{background:rgba(74,158,255,.12);color:#90caf9;border-color:rgba(74,158,255,.25);}
+.tier-control{background:rgba(232,98,42,.12);color:#ffab91;border-color:rgba(232,98,42,.25);}
+
 /* ADMIN MEMBERS */
 .member-list{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.35rem;}
 .member-chip{display:inline-flex;align-items:center;gap:.3rem;font-size:.62rem;padding:2px 8px;border-radius:20px;background:var(--ash2);border:1px solid var(--dust);color:var(--mist);font-family:var(--font-m);}
@@ -1359,7 +1401,7 @@ function renderDB(){
     });
     html+=`<td><a href="${esc(d.video_link)}" target="_blank" style="color:var(--blue);font-size:.7rem;" onclick="event.stopPropagation()">↗</a></td>`;
     html+='</tr>';
-    if(isOpen)html+=`<tr class="expand-row"><td colspan="${cols.length+1}">${renderExpand(d)}</td></tr>`;
+    if(isOpen)html+=`<tr class="expand-row" data-xvid="${esc(d.video_id)}"><td colspan="${cols.length+1}">${renderExpand(d)}</td></tr>`;
   });
   html+='</tbody></table></div>';
   document.getElementById('db-table').innerHTML=html;
@@ -1400,59 +1442,395 @@ function toggleRow(vid){
   renderDB();
 }
 
+// ── Marker type config ────────────────────────────────────────
+const MARKER_COLORS = {
+  hook_end:'#f5a623', scene_cut:'#6e6b62', pattern_interrupt:'#9b6dff',
+  thumbnail_callback:'#e8622a', eye_focus:'#4a9eff', emotional_peak:'#4caf50',
+  pacing_dip:'#ffab91', escalation:'#26c6a6', cta:'#ce93d8', other:'#9e9b92'
+};
+const MARKER_LABELS = {
+  hook_end:'Hook End', scene_cut:'Scene Cut', pattern_interrupt:'Pattern Interrupt',
+  thumbnail_callback:'Thumb Callback', eye_focus:'Eye Focus', emotional_peak:'Emotional Peak',
+  pacing_dip:'Pacing Dip', escalation:'Escalation', cta:'CTA', other:'Other'
+};
+
+// annotation cache per video_id: {annotations:[], review:{}}
+const annCache = {};
+
+function fmtSec(s){s=parseInt(s)||0;const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;return h>0?h+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0'):m+':'+String(sec).padStart(2,'0');}
+
+async function loadAnnotations(videoId){
+  if(annCache[videoId])return annCache[videoId];
+  try{
+    const data=await api('GET','/videos/'+videoId+'/annotations');
+    annCache[videoId]={annotations:data.annotations||[],review:data.review||null};
+    return annCache[videoId];
+  }catch(e){return{annotations:[],review:null};}
+}
+
 function renderExpand(d){
   const der=computeDerived(d);
   const cell=(l,v)=>`<div class="xcell"><div class="xl">${l}</div><div class="xv" title="${esc(v??'—')}">${esc(v??'—')||'—'}</div></div>`;
   const canRemove=currentWorkspace&&!currentWorkspace.is_master&&['edit','delete'].includes(currentWorkspace.permission);
+  const canEdit=SESSION?.user?.role==='editor'||SESSION?.user?.role==='admin';
+  const vid=d.video_id;
+  const cached=annCache[vid];
+  const secs=parseInt(d.video_length_secs)||0;
+
+  // Trigger async load (re-renders on complete)
+  if(!cached){loadAnnotations(vid).then(()=>{const row=document.querySelector(`tr.expand-row[data-xvid="${CSS.escape(vid)}"]`);if(row)row.querySelector('td').innerHTML=renderExpand(d);});}
+
+  const anns=cached?.annotations||[];
+  const review=cached?.review||{};
+
+  // Build tier badge
+  const tier=review.benchmark_tier||'';
+  const tierBadge=tier?`<span class="tier-badge tier-${tier}">${tier==='outlier'?'⬆ Outlier':tier==='benchmark'?'⬇ Benchmark':'◎ Control'}</span>`:'';
+
   return `<div class="xwrap">
     <img class="xthumb" src="${esc(d.thumbnail_url)}" alt="" onerror="this.style.display='none'"/>
-    <div class="xbody">
-      <div class="xtitle">${esc(d.video_title)}</div>
+    <div class="xbody" style="min-width:0;">
+      <div style="display:flex;align-items:flex-start;gap:.5rem;flex-wrap:wrap;margin-bottom:.25rem;">
+        <div class="xtitle" style="flex:1;">${esc(d.video_title)}</div>
+        ${tierBadge}
+      </div>
       <div class="xmeta">${esc(d.channel_name)} · ${fmtNum(d.channel_size)} subs · published ${esc(d.published_at)||'N/A'} · ${esc(d.video_length)||'—'}</div>
-      <div class="xgrid">
-        ${cell('Views',fmtNum(d.views_total))}
-        ${cell('Likes',fmtNum(d.likes))}
-        ${cell('Comments',fmtNum(d.comments))}
-        ${cell('Like rate',d.like_rate)}
-        ${cell('Engagement',d.engagement)}
-        ${cell('Views/day',d.views_per_day)}
-        ${cell('vs channel avg',d.relative_perf_index)}
-        ${cell('Rating',d.perf_label||der.perf.label)}
-        ${cell('Packaging',d.packaging)}
-        ${cell('Clickbait',d.clickbait_score)}
-        ${cell('Format',d.format)}
-        ${cell('Formula',d.formula)}
+
+      <div class="xtabs" onclick="event.stopPropagation()">
+        <div class="xtab active" onclick="switchXTab(this,'${vid}','stats')">Stats</div>
+        <div class="xtab" onclick="switchXTab(this,'${vid}','timeline')">Timeline ${anns.length?'<span style='color:var(--ember);font-size:.6rem;'>'+anns.length+'</span>':''}</div>
+        <div class="xtab" onclick="switchXTab(this,'${vid}','review')">Review ${review.content_skeleton?'<span style='color:var(--green);font-size:.6rem;'>✓</span>':''}</div>
       </div>
-      <div class="xgrid">
-        ${cell('Face emotion',d.face_emotion)}
-        ${cell('Thumb style',d.thumbnail_style)}
-        ${cell('Background',d.thumbnail_background)}
-        ${cell('Contrast',d.thumbnail_contrast)}
-        ${cell('Faces',d.thumbnail_num_faces)}
-        ${cell('Text on thumb',d.text_present)}
-        ${cell('Dominant color',d.dominant_color)}
-        ${cell('Clarity',d.clarity_score)}
+
+      <!-- STATS TAB -->
+      <div class="xtab-pane active" id="xtab-stats-${vid}" onclick="event.stopPropagation()">
+        <div class="xgrid">
+          ${cell('Views',fmtNum(d.views_total))}
+          ${cell('Likes',fmtNum(d.likes))}
+          ${cell('Comments',fmtNum(d.comments))}
+          ${cell('Like rate',d.like_rate)}
+          ${cell('Engagement',d.engagement)}
+          ${cell('Views/day',d.views_per_day)}
+          ${cell('vs channel avg',d.relative_perf_index)}
+          ${cell('Rating',d.perf_label||der.perf.label)}
+          ${cell('Packaging',d.packaging)}
+          ${cell('Clickbait',d.clickbait_score)}
+          ${cell('Format',d.format)}
+          ${cell('Formula',d.formula)}
+        </div>
+        <div class="xgrid">
+          ${cell('Face emotion',d.face_emotion)}
+          ${cell('Thumb style',d.thumbnail_style)}
+          ${cell('Background',d.thumbnail_background)}
+          ${cell('Contrast',d.thumbnail_contrast)}
+          ${cell('Faces',d.thumbnail_num_faces)}
+          ${cell('Text on thumb',d.text_present)}
+          ${cell('Dominant color',d.dominant_color)}
+          ${cell('Clarity',d.clarity_score)}
+        </div>
+        ${d.composition_notes?`<div class="xnote">Thumbnail — ${esc(d.composition_notes)}</div>`:''}
+        ${hasIntroData(d)?`<div class="xgrid">
+          ${cell('Hook type',d.intro_hook_type)}
+          ${cell('Result first',d.intro_result_shown)}
+          ${cell('Goal stated',d.intro_goal_stated)}
+          ${cell('Tension',d.intro_tension)}
+          ${cell('Pacing',d.intro_pacing)}
+          ${cell('Voice',d.intro_voice_style)}
+          ${cell('Music',d.intro_music)}
+          ${cell('Thumb callback',d.intro_thumbnail_callback)}
+          ${cell('Intro score',(parseInt(d.intro_score)||0)+'/100')}
+        </div>
+        ${d.intro_opening_line?`<div class="xnote">Opening line — "${esc(d.intro_opening_line)}"</div>`:''}`:
+        `<div class="xnote">No intro analysis yet — run it from Single Video.</div>`}
       </div>
-      ${d.composition_notes?`<div class="xnote">Thumbnail — ${esc(d.composition_notes)}</div>`:''}
-      ${hasIntroData(d)?`<div class="xgrid">
-        ${cell('Hook type',d.intro_hook_type)}
-        ${cell('Result first',d.intro_result_shown)}
-        ${cell('Goal stated',d.intro_goal_stated)}
-        ${cell('Tension',d.intro_tension)}
-        ${cell('Pacing',d.intro_pacing)}
-        ${cell('Voice',d.intro_voice_style)}
-        ${cell('Music',d.intro_music)}
-        ${cell('Thumb callback',d.intro_thumbnail_callback)}
-        ${cell('Intro score',(parseInt(d.intro_score)||0)+'/100')}
+
+      <!-- TIMELINE TAB -->
+      <div class="xtab-pane" id="xtab-timeline-${vid}" onclick="event.stopPropagation()">
+        ${secs>0?`
+        <div class="timeline-wrap">
+          <div class="timeline-label"><span>0:00</span><span>${fmtSec(secs)}</span></div>
+          <div class="timeline-bar" id="tbar-${vid}" data-vid="${vid}" data-secs="${secs}"
+            onclick="timelineClick(event,this)"
+            onmousemove="timelineHover(event,this)" onmouseleave="timelineLeave(this)">
+            <div class="timeline-bar-fill"></div>
+            ${anns.map(a=>{
+              const pct=(a.timestamp_sec/secs*100).toFixed(2);
+              const col=MARKER_COLORS[a.marker_type]||'#9e9b92';
+              return `<div class="tmarker" style="left:${pct}%;color:${col};" data-ann-id="${a.id}" data-ts="${a.timestamp_sec}" data-type="${a.marker_type}" data-note="${esc(a.note)}"
+                onmouseenter="showMarkerTip(this)" onmouseleave="hideMarkerTip(this)" onclick="event.stopPropagation()">
+                <div class="tmarker-dot"></div>
+              </div>`;
+            }).join('')}
+            <div id="thover-${vid}" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.2);pointer-events:none;display:none;"></div>
+          </div>
+          <div class="timeline-legend">${Object.entries(MARKER_COLORS).map(([k,c])=>`<span class="tleg"><span class="tleg-dot" style="background:${c};"></span>${MARKER_LABELS[k]}</span>`).join('')}</div>
+        </div>
+        ${canEdit?`<div class="timeline-add-row">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Time (mm:ss or seconds)</label>
+            <input type="text" id="tann-time-${vid}" placeholder="e.g. 0:45 or 45" style="width:120px;"/>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Marker type</label>
+            <select id="tann-type-${vid}">
+              ${Object.entries(MARKER_LABELS).map(([k,l])=>`<option value="${k}">${l}</option>`).join('')}
+            </select>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:3px;">
+            <label style="font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);">Note (optional)</label>
+            <input type="text" id="tann-note-${vid}" placeholder="e.g. Creator zooms into build — forces refocus"/>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="addAnnotation('${vid}')">+ Add marker</button>
+        </div>`:''}
+        <div class="annotation-list" id="ann-list-${vid}">
+          ${renderAnnList(anns, vid, canEdit)}
+        </div>`:'<p style="font-size:.75rem;color:var(--smoke);">No video length data — analyze this video first to enable the timeline.</p>'}
       </div>
-      ${d.intro_opening_line?`<div class="xnote">Opening line — "${esc(d.intro_opening_line)}"</div>`:''}`:
-      `<div class="xnote">No intro analysis for this video yet — run it from Single Video.</div>`}
-      <div class="xactions">
-        <a class="btn btn-sm btn-ghost" href="${esc(d.video_link)}" target="_blank" onclick="event.stopPropagation()">Open on YouTube ↗</a>
-        ${canRemove?`<button class="btn btn-sm btn-danger" data-vid="${esc(d.video_id)}" onclick="event.stopPropagation();removeFromWorkspace(this.dataset.vid)">Remove from workspace</button>`:''}
+
+      <!-- REVIEW TAB -->
+      <div class="xtab-pane" id="xtab-review-${vid}" onclick="event.stopPropagation()">
+        ${canEdit?`
+        <div class="review-grid">
+          <div class="review-field">
+            <label>Content skeleton</label>
+            <select id="rv-skeleton-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="linear-story" ${review.content_skeleton==='linear-story'?'selected':''}>Linear story</option>
+              <option value="challenge-loop" ${review.content_skeleton==='challenge-loop'?'selected':''}>Challenge loop</option>
+              <option value="tutorial-steps" ${review.content_skeleton==='tutorial-steps'?'selected':''}>Tutorial steps</option>
+              <option value="reaction" ${review.content_skeleton==='reaction'?'selected':''}>Reaction + commentary</option>
+              <option value="vlog" ${review.content_skeleton==='vlog'?'selected':''}>Vlog</option>
+              <option value="hybrid" ${review.content_skeleton==='hybrid'?'selected':''}>Hybrid</option>
+            </select>
+          </div>
+          <div class="review-field">
+            <label>Thumbnail promise</label>
+            <select id="rv-promise-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="delivered" ${review.thumbnail_promise==='delivered'?'selected':''}>Delivered exactly</option>
+              <option value="partial" ${review.thumbnail_promise==='partial'?'selected':''}>Partial delivery</option>
+              <option value="bait-and-switch" ${review.thumbnail_promise==='bait-and-switch'?'selected':''}>Bait and switch</option>
+            </select>
+          </div>
+          <div class="review-field">
+            <label>Ending style</label>
+            <select id="rv-ending-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="cliffhanger" ${review.ending_style==='cliffhanger'?'selected':''}>Cliffhanger</option>
+              <option value="resolution" ${review.ending_style==='resolution'?'selected':''}>Satisfying resolution</option>
+              <option value="next-video-tease" ${review.ending_style==='next-video-tease'?'selected':''}>Next video tease</option>
+              <option value="abrupt" ${review.ending_style==='abrupt'?'selected':''}>Abrupt</option>
+            </select>
+          </div>
+          <div class="review-field">
+            <label>Creator presence</label>
+            <select id="rv-presence-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="high-energy-oncam" ${review.creator_presence==='high-energy-oncam'?'selected':''}>High energy on-cam</option>
+              <option value="voiceover-only" ${review.creator_presence==='voiceover-only'?'selected':''}>Voiceover only</option>
+              <option value="mixed" ${review.creator_presence==='mixed'?'selected':''}>Mixed</option>
+              <option value="commentary" ${review.creator_presence==='commentary'?'selected':''}>Commentary over footage</option>
+            </select>
+          </div>
+          <div class="review-field">
+            <label>Re-watchability</label>
+            <select id="rv-rewatch-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="high" ${review.rewatchability==='high'?'selected':''}>High</option>
+              <option value="medium" ${review.rewatchability==='medium'?'selected':''}>Medium</option>
+              <option value="low" ${review.rewatchability==='low'?'selected':''}>Low</option>
+            </select>
+          </div>
+          <div class="review-field">
+            <label>Information density</label>
+            <select id="rv-density-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="high" ${review.info_density==='high'?'selected':''}>High — fast, lots happening</option>
+              <option value="medium" ${review.info_density==='medium'?'selected':''}>Medium</option>
+              <option value="low" ${review.info_density==='low'?'selected':''}>Low — relaxed pace</option>
+            </select>
+          </div>
+          <div class="review-field" style="grid-column:1/-1;">
+            <label>Benchmark tier</label>
+            <select id="rv-tier-${vid}" onchange="autoSaveReview('${vid}')">
+              <option value="">— select —</option>
+              <option value="outlier" ${review.benchmark_tier==='outlier'?'selected':''}>⬆ Outlier — overperformer, added as a winner</option>
+              <option value="benchmark" ${review.benchmark_tier==='benchmark'?'selected':''}>⬇ Benchmark — underperformer, added as a control</option>
+              <option value="control" ${review.benchmark_tier==='control'?'selected':''}>◎ Control — neutral, average performer</option>
+            </select>
+          </div>
+          <div class="review-field" style="grid-column:1/-1;">
+            <label>Notes — structure, delivery, what made it work or fail</label>
+            <textarea id="rv-notes-${vid}" rows="3" placeholder="e.g. Strong result-first hook but pacing drags after 4 min. Thumbnail callback at 2:14 when he shows the finished build. No midpoint escalation.">${esc(review.general_notes||'')}</textarea>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.75rem;">
+          <button class="btn btn-sm btn-primary" onclick="saveReview('${vid}')">Save review</button>
+          <span id="rv-status-${vid}" style="font-size:.72rem;color:var(--smoke);"></span>
+        </div>`
+        :`<div style="font-size:.78rem;color:var(--smoke);padding:.5rem 0;">View only — editors and admins can fill in the review form.</div>
+        ${review.content_skeleton?`<div class="xgrid" style="margin-top:.5rem;">
+          ${cell('Skeleton',review.content_skeleton)}
+          ${cell('Promise',review.thumbnail_promise)}
+          ${cell('Ending',review.ending_style)}
+          ${cell('Presence',review.creator_presence)}
+          ${cell('Rewatch',review.rewatchability)}
+          ${cell('Density',review.info_density)}
+          ${cell('Tier',review.benchmark_tier)}
+        </div>${review.general_notes?`<div class="xnote">${esc(review.general_notes)}</div>`:''}`:''}`}
+      </div>
+
+      <div class="xactions" onclick="event.stopPropagation()">
+        <a class="btn btn-sm btn-ghost" href="${esc(d.video_link)}" target="_blank">Open on YouTube ↗</a>
+        ${canRemove?`<button class="btn btn-sm btn-danger" data-vid="${vid}" onclick="removeFromWorkspace(this.dataset.vid)">Remove from workspace</button>`:''}
       </div>
     </div>
   </div>`;
+}
+
+function renderAnnList(anns, vid, canEdit){
+  if(!anns.length)return'<p style="font-size:.72rem;color:var(--smoke);">No markers yet — click on the timeline or enter a time above to add one.</p>';
+  return anns.map(a=>`<div class="annotation-item">
+    <span class="ann-time">${fmtSec(a.timestamp_sec)}</span>
+    <span class="ann-type" style="background:${MARKER_COLORS[a.marker_type]}22;color:${MARKER_COLORS[a.marker_type]};border:1px solid ${MARKER_COLORS[a.marker_type]}44;">${MARKER_LABELS[a.marker_type]||a.marker_type}</span>
+    <span class="ann-note">${esc(a.note)||'—'}</span>
+    ${canEdit?`<span class="ann-del" data-ann-id="${a.id}" data-vid="${vid}" onclick="deleteAnnotation(this.dataset.vid,this.dataset.annId)">✕</span>`:''}
+  </div>`).join('');
+}
+
+function switchXTab(el, vid, tab){
+  const wrap=el.closest('.xbody');
+  wrap.querySelectorAll('.xtab').forEach(t=>t.classList.remove('active'));
+  wrap.querySelectorAll('.xtab-pane').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  const pane=document.getElementById('xtab-'+tab+'-'+vid);
+  if(pane)pane.classList.add('active');
+}
+
+// Timeline interaction
+function timelineClick(e,bar){
+  e.stopPropagation();
+  const rect=bar.getBoundingClientRect();
+  const pct=(e.clientX-rect.left)/rect.width;
+  const secs=Math.round(pct*parseInt(bar.dataset.secs));
+  const vid=bar.dataset.vid;
+  const timeInput=document.getElementById('tann-time-'+vid);
+  if(timeInput)timeInput.value=fmtSec(secs);
+}
+
+function timelineHover(e,bar){
+  const rect=bar.getBoundingClientRect();
+  const pct=(e.clientX-rect.left)/rect.width;
+  const cursor=document.getElementById('thover-'+bar.dataset.vid);
+  if(cursor){cursor.style.display='block';cursor.style.left=(pct*100)+'%';}
+}
+function timelineLeave(bar){
+  const cursor=document.getElementById('thover-'+bar.dataset.vid);
+  if(cursor)cursor.style.display='none';
+}
+function showMarkerTip(el){
+  const tip=document.createElement('div');
+  tip.className='tmarker-tip';
+  tip.id='mtip-'+el.dataset.annId;
+  tip.textContent=fmtSec(el.dataset.ts)+' · '+MARKER_LABELS[el.dataset.type]+(el.dataset.note?' — '+el.dataset.note:'');
+  el.appendChild(tip);
+}
+function hideMarkerTip(el){
+  const t=document.getElementById('mtip-'+el.dataset.annId);
+  if(t)t.remove();
+}
+
+function parseTimeInput(val){
+  val=(val||'').trim();
+  if(/^\d+$/.test(val))return parseInt(val);
+  const m=val.match(/^(\d+):(\d+)(?::(\d+))?$/);
+  if(!m)return null;
+  return m[3]!=null?parseInt(m[1])*3600+parseInt(m[2])*60+parseInt(m[3]):parseInt(m[1])*60+parseInt(m[2]);
+}
+
+async function addAnnotation(vid){
+  const timeVal=document.getElementById('tann-time-'+vid)?.value||'';
+  const type=document.getElementById('tann-type-'+vid)?.value||'';
+  const note=document.getElementById('tann-note-'+vid)?.value||'';
+  const secs=parseTimeInput(timeVal);
+  if(secs===null||secs<0){alert('Enter a valid time, e.g. 0:45 or 45');return;}
+  if(!type){alert('Select a marker type');return;}
+  try{
+    const r=await api('POST','/videos/'+vid+'/annotations',{timestamp_sec:secs,marker_type:type,note});
+    delete annCache[vid];
+    const fresh=await loadAnnotations(vid);
+    // Update annotation list and re-render timeline markers
+    const listEl=document.getElementById('ann-list-'+vid);
+    const canEdit=SESSION?.user?.role==='editor'||SESSION?.user?.role==='admin';
+    if(listEl)listEl.innerHTML=renderAnnList(fresh.annotations,vid,canEdit);
+    // Re-render the whole expanded row to update timeline markers + tab counts
+    const row=document.querySelector('[data-xvid="'+vid+'"]');
+    if(row){
+      const d=workspaceVideos.find(v=>v.video_id===vid);
+      if(d)row.querySelector('td').innerHTML=renderExpand(d);
+      switchXTabById(vid,'timeline');
+    }
+    document.getElementById('tann-time-'+vid).value='';
+    document.getElementById('tann-note-'+vid).value='';
+  }catch(e){alert('Error: '+e.message);}
+}
+
+async function deleteAnnotation(vid,annId){
+  if(!confirm('Delete this marker?'))return;
+  try{
+    await api('DELETE','/videos/'+vid+'/annotations/'+annId);
+    delete annCache[vid];
+    const fresh=await loadAnnotations(vid);
+    const row=document.querySelector('[data-xvid="'+vid+'"]');
+    if(row){
+      const d=workspaceVideos.find(v=>v.video_id===vid);
+      if(d)row.querySelector('td').innerHTML=renderExpand(d);
+      switchXTabById(vid,'timeline');
+    }
+  }catch(e){alert('Error: '+e.message);}
+}
+
+function switchXTabById(vid,tab){
+  const panes=document.querySelectorAll('[id^="xtab-"][id$="-'+vid+'"]');
+  panes.forEach(p=>p.classList.remove('active'));
+  const tabs=document.querySelectorAll('.xtab');
+  tabs.forEach(t=>t.classList.remove('active'));
+  const target=document.getElementById('xtab-'+tab+'-'+vid);
+  if(target){target.classList.add('active');}
+}
+
+let reviewSaveTimers={};
+function autoSaveReview(vid){
+  clearTimeout(reviewSaveTimers[vid]);
+  reviewSaveTimers[vid]=setTimeout(()=>saveReview(vid),1200);
+}
+
+async function saveReview(vid){
+  const g=id=>document.getElementById(id+'-'+vid)?.value||'';
+  const payload={
+    content_skeleton:g('rv-skeleton'),thumbnail_promise:g('rv-promise'),
+    ending_style:g('rv-ending'),creator_presence:g('rv-presence'),
+    rewatchability:g('rv-rewatch'),info_density:g('rv-density'),
+    benchmark_tier:g('rv-tier'),general_notes:g('rv-notes'),
+  };
+  const status=document.getElementById('rv-status-'+vid);
+  if(status)status.textContent='Saving...';
+  try{
+    await api('POST','/videos/'+vid+'/review',payload);
+    delete annCache[vid];
+    await loadAnnotations(vid);
+    if(status)status.textContent='Saved ✓';
+    setTimeout(()=>{if(status)status.textContent='';},2000);
+    // Refresh expanded row to update tier badge + tab checkmark
+    const row=document.querySelector('[data-xvid="'+vid+'"]');
+    if(row){
+      const d=workspaceVideos.find(v=>v.video_id===vid);
+      if(d)row.querySelector('td').innerHTML=renderExpand(d);
+      switchXTabById(vid,'review');
+    }
+  }catch(e){
+    if(status)status.textContent='Error: '+e.message;
+  }
 }
 
 async function removeFromWorkspace(vid){
