@@ -321,8 +321,8 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
 .tool-btn{font-size:.72rem;padding:5px 10px;border-radius:var(--r);border:1px solid var(--dust);background:var(--ash3);color:var(--mist);cursor:pointer;transition:all .15s;}
 .tool-btn:hover{color:var(--white);border-color:var(--mist);}
 .tool-btn.active{background:rgba(232,98,42,.15);border-color:var(--ember);color:var(--ember);}
-.color-swatch{width:22px;height:22px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:border-color .15s;flex-shrink:0;}
-.color-swatch.active{border-color:var(--white);}
+.color-swatch{width:22px;height:22px;border-radius:50%;border:3px solid transparent;cursor:pointer;transition:all .15s;flex-shrink:0;outline:2px solid transparent;outline-offset:2px;}
+.color-swatch.active{outline:2px solid var(--white);}
 .player-time-display{font-family:var(--font-m);font-size:.7rem;color:var(--smoke);margin-left:auto;}
 .draw-list-item{display:flex;align-items:center;gap:.5rem;padding:5px 10px;background:var(--ash3);border:1px solid var(--dust);border-radius:6px;font-size:.72rem;}
 .draw-list-item .dl-time{font-family:var(--font-m);color:var(--mist);flex-shrink:0;}
@@ -2372,46 +2372,43 @@ async function switchPlayerView(vid, view) {
 
 async function initPlayerOverlay(vid) {
   const ps = getPS(vid);
-  // Guard: only init once per vid
-  if (ps.overlayInitialized) return;
-  ps.overlayInitialized = true;
-
-  try {
-    const data = await api('GET', '/videos/' + vid + '/draws');
-    ps.draws = data.draws || [];
-    ps.captions = data.captions || [];
-  } catch(e) { ps.draws = []; ps.captions = []; }
 
   const wrap = document.getElementById('player-wrap-' + vid);
   const canvas = document.getElementById('draw-canvas-' + vid);
   if (!canvas || !wrap) return;
 
-  // Set canvas pixel size = wrap's natural 16:9 size.
-  // wrap.offsetWidth is reliable synchronously (wrap is visible and laid out).
-  // The iframe inside uses aspect-ratio:16/9 so height = width * 9/16.
-  function syncCanvasSize() {
-    const w = wrap.offsetWidth || 640;
-    const h = Math.round(w * 9 / 16);
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-      redrawCanvas(vid);
-    }
-  }
-  syncCanvasSize();
-  new ResizeObserver(syncCanvasSize).observe(wrap);
+  // Size the canvas to match the player wrap every time this is called.
+  // Use offsetWidth synchronously — the wrap is visible when this runs.
+  const w = wrap.offsetWidth || 640;
+  const h = Math.round(w * 9 / 16);
+  canvas.width  = w;
+  canvas.height = h;
 
-  // Attach draw events once
-  canvas.addEventListener('mousedown',  e => startDraw(e, vid));
-  canvas.addEventListener('mousemove',  e => moveDraw(e, vid));
-  canvas.addEventListener('mouseup',    () => endDraw(vid));
-  canvas.addEventListener('mouseleave', () => endDraw(vid));
-  canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e.touches[0], vid); }, {passive:false});
-  canvas.addEventListener('touchmove',  e => { e.preventDefault(); moveDraw(e.touches[0], vid); }, {passive:false});
-  canvas.addEventListener('touchend',   e => { e.preventDefault(); endDraw(vid); }, {passive:false});
+  // Attach events only once
+  if (!ps.eventsAttached) {
+    ps.eventsAttached = true;
+    canvas.addEventListener('mousedown',  e => startDraw(e, vid));
+    canvas.addEventListener('mousemove',  e => moveDraw(e, vid));
+    canvas.addEventListener('mouseup',    () => endDraw(vid));
+    canvas.addEventListener('mouseleave', () => endDraw(vid));
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); startDraw(e.touches[0], vid); }, {passive:false});
+    canvas.addEventListener('touchmove',  e => { e.preventDefault(); moveDraw(e.touches[0], vid); }, {passive:false});
+    canvas.addEventListener('touchend',   e => { e.preventDefault(); endDraw(vid); }, {passive:false});
+    new ResizeObserver(() => {
+      const nw = wrap.offsetWidth || 640;
+      canvas.width  = nw;
+      canvas.height = Math.round(nw * 9 / 16);
+      redrawCanvas(vid);
+    }).observe(wrap);
+  }
 
   setTool(vid, ps.tool);
-  refreshDrawList(vid);
+
+  // Load saved draws in background (don't await before sizing)
+  api('GET', '/videos/' + vid + '/draws')
+    .then(data => { ps.draws = data.draws || []; ps.captions = data.captions || []; refreshDrawList(vid); redrawCanvas(vid); })
+    .catch(() => {});
+
   startPlayerPoll(vid);
 }
 
@@ -2472,7 +2469,7 @@ function startDraw(e, vid) {
   const ps = getPS(vid);
   if (ps.tool !== 'pen') return;
   const canvas = document.getElementById('draw-canvas-' + vid);
-  if (!canvas || !canvas.width) return;
+  if (!canvas) return;
   ps.drawing = true;
   ps.path = [getCanvasPos(e, canvas)]; // pixel coords
   ps.drawStartSec = ps.currentSec || 0;
@@ -2664,8 +2661,9 @@ function setTool(vid, tool) {
 
 function setDrawColor(vid, color, el) {
   getPS(vid).color = color;
-  const wrap = document.getElementById('player-wrap-' + vid);
-  if (wrap) wrap.querySelectorAll('.color-swatch').forEach(s => {
+  // Swatches live in player-controls which is a sibling of player-wrap, not inside it
+  // Search by data-vid attribute instead
+  document.querySelectorAll('.color-swatch[data-vid="' + vid + '"]').forEach(s => {
     s.classList.toggle('active', s.dataset.color === color);
   });
 }
