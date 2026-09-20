@@ -1898,7 +1898,6 @@ async function addAnnotation(vid){
 }
 
 async function deleteAnnotation(vid,annId){
-  if(!confirm('Delete this marker?'))return;
   try{
     await api('DELETE','/videos/'+vid+'/annotations/'+annId);
     delete annCache[vid];
@@ -2387,12 +2386,18 @@ async function initPlayerOverlay(vid) {
   if (!canvas || !wrap) return;
 
   function resizeCanvas() {
-    const r = canvas.getBoundingClientRect();
-    canvas.width = r.width || wrap.offsetWidth;
-    canvas.height = r.height || wrap.offsetHeight;
+    // getBoundingClientRect may return 0 before layout — fall back to offsetWidth/Height
+    // Use the wrap dimensions since canvas is absolute-positioned inside it
+    const w = wrap.offsetWidth || wrap.getBoundingClientRect().width || 640;
+    const h = wrap.offsetHeight || wrap.getBoundingClientRect().height || 360;
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
     redrawCanvas(vid);
   }
-  resizeCanvas();
+  // Defer first resize until after browser has laid out the player
+  requestAnimationFrame(() => { requestAnimationFrame(resizeCanvas); });
   const ro = new ResizeObserver(resizeCanvas);
   ro.observe(wrap);
 
@@ -2460,12 +2465,14 @@ function stopPlayerPoll(vid) {
 }
 
 function getCanvasPos(e, canvas) {
-  // Use getBoundingClientRect for both position AND dimensions
-  // so CSS-scaled canvas matches pixel coordinates correctly
+  // Map mouse position to normalised 0-1 coords using display rect for position
+  // but we'll convert to pixel coords when drawing (canvas.width/height)
   const r = canvas.getBoundingClientRect();
+  const displayW = r.width || canvas.width;
+  const displayH = r.height || canvas.height;
   return {
-    x: (e.clientX - r.left) / r.width,
-    y: (e.clientY - r.top) / r.height
+    x: (e.clientX - r.left) / displayW,
+    y: (e.clientY - r.top) / displayH
   };
 }
 
@@ -2518,17 +2525,12 @@ async function endDraw(vid) {
 
 function renderLiveStroke(vid, canvas) {
   const ps = getPS(vid);
+  if (!canvas.width || !canvas.height) return; // not laid out yet
   const ctx = canvas.getContext('2d');
-  // Use display size for drawing (not canvas pixel size which may differ)
-  const r = canvas.getBoundingClientRect();
-  const dw = r.width, dh = r.height;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  // Scale context to match CSS display size
-  ctx.save();
-  ctx.scale(canvas.width / dw, canvas.height / dh);
-  redrawSavedStrokes(vid, ctx, dw, dh, ps.currentSec || 0);
-  if (ps.path.length > 1) drawPathPts(ctx, ps.path, ps.color, ps.width, dw, dh);
-  ctx.restore();
+  const cw = canvas.width, ch = canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
+  redrawSavedStrokes(vid, ctx, cw, ch, ps.currentSec || 0);
+  if (ps.path.length > 1) drawPathPts(ctx, ps.path, ps.color, ps.width, cw, ch);
 }
 
 function pathToSVG(pts) {
@@ -2568,16 +2570,12 @@ function redrawSavedStrokes(vid, ctx, dw, dh, currentSec) {
 
 function redrawCanvas(vid) {
   const canvas = document.getElementById('draw-canvas-' + vid);
-  if (!canvas) return;
+  if (!canvas || !canvas.width || !canvas.height) return;
   const ctx = canvas.getContext('2d');
-  const r = canvas.getBoundingClientRect();
-  const dw = r.width || canvas.width, dh = r.height || canvas.height;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.save();
-  ctx.scale(canvas.width / dw, canvas.height / dh);
+  const cw = canvas.width, ch = canvas.height;
+  ctx.clearRect(0, 0, cw, ch);
   const ps = getPS(vid);
-  redrawSavedStrokes(vid, ctx, dw, dh, ps.currentSec || 0);
-  ctx.restore();
+  redrawSavedStrokes(vid, ctx, cw, ch, ps.currentSec || 0);
 }
 
 // Caption sidebar: shows current caption as highlighted text beside the video
@@ -2689,7 +2687,6 @@ function undoLastDraw(vid) {
 }
 
 async function clearAllDraws(vid) {
-  if (!confirm('Clear all drawn strokes for this video?')) return;
   const ps = getPS(vid);
   await Promise.all(ps.draws.map(d => api('DELETE', '/videos/' + vid + '/draws/' + d.id).catch(() => {})));
   ps.draws = [];
