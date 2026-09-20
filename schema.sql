@@ -123,6 +123,27 @@ CREATE TABLE IF NOT EXISTS videos (
   updated_at                 TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS channel_monitor (
+  channel_id    TEXT PRIMARY KEY,
+  channel_name  TEXT NOT NULL,
+  channel_url   TEXT DEFAULT '',
+  added_by      TEXT NOT NULL,
+  last_checked  TIMESTAMPTZ,
+  last_video_id TEXT DEFAULT '',
+  active        INTEGER DEFAULT 1,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS video_velocity (
+  video_id      TEXT NOT NULL,
+  snapshot_type TEXT NOT NULL,   -- '24h' | '48h' | '7d' | '30d'
+  views         BIGINT DEFAULT 0,
+  likes         BIGINT DEFAULT 0,
+  comments      BIGINT DEFAULT 0,
+  captured_at   TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (video_id, snapshot_type)
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_user    ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_wm_user          ON workspace_members(user_id);

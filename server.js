@@ -13,6 +13,8 @@ const crypto = require('crypto');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { q, one, migrate, seed } = require('./db');
+const { startCron, runStatsRefresh, runChannelMonitor } = require('./cron');
+
 
 const app = express();
 app.set('trust proxy', 1); // Railway sits behind a proxy
@@ -450,6 +452,61 @@ app.delete('/admin/workspaces/:id/members/:uid', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════
+// CHANNEL MONITOR (admin)
+// ══════════════════════════════════════════════════════════════
+
+app.get('/admin/channels', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const channels = await q('SELECT * FROM channel_monitor ORDER BY created_at DESC');
+  res.json({ channels });
+});
+
+app.post('/admin/channels', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const { channel_id, channel_name, channel_url = '' } = req.body || {};
+  if (!channel_id || !channel_name) return sendErr(res, 'channel_id and channel_name required');
+  const existing = await one('SELECT 1 FROM channel_monitor WHERE channel_id = $1', [channel_id]);
+  if (existing) return sendErr(res, 'Channel already in watchlist');
+  await q(
+    'INSERT INTO channel_monitor (channel_id, channel_name, channel_url, added_by) VALUES ($1,$2,$3,$4)',
+    [channel_id.trim(), channel_name.trim(), channel_url.trim(), req.session.uid]
+  );
+  res.json({ success: true, channel: { channel_id, channel_name, channel_url, active: 1 } });
+});
+
+app.patch('/admin/channels/:id', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const { active } = req.body || {};
+  await q('UPDATE channel_monitor SET active=$1 WHERE channel_id=$2', [active ? 1 : 0, req.params.id]);
+  res.json({ success: true });
+});
+
+app.delete('/admin/channels/:id', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  await q('DELETE FROM channel_monitor WHERE channel_id = $1', [req.params.id]);
+  res.json({ success: true });
+});
+
+// Manual trigger endpoints (admin only — useful for testing without waiting for schedule)
+app.post('/admin/cron/refresh', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  res.json({ success: true, message: 'Stats refresh started in background' });
+  runStatsRefresh().catch(e => console.error('[manual refresh]', e.message));
+});
+
+app.post('/admin/cron/monitor', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  res.json({ success: true, message: 'Channel monitor started in background' });
+  runChannelMonitor().catch(e => console.error('[manual monitor]', e.message));
+});
+
+// ══════════════════════════════════════════════════════════════
 // TRANSCRIPT + AI
 // ══════════════════════════════════════════════════════════════
 
@@ -611,7 +668,10 @@ const PORT = process.env.PORT || 3000;
   try {
     await migrate();
     await seed();
-    app.listen(PORT, '0.0.0.0', () => console.log(`✓ Ashborn API listening on :${PORT} (model: ${AI_MODEL})`));
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`✓ Ashborn API listening on :${PORT} (model: ${AI_MODEL})`);
+      startCron(); // start background refresh + channel monitor
+    });
   } catch (e) {
     console.error('FATAL boot error:', e);
     process.exit(1);
