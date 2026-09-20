@@ -514,12 +514,18 @@ app.post('/videos/:id/review', async (req, res) => {
 });
 
 
-// ── Draws + Captions ──────────────────────────────────────────
+// ── Draws + Captions (per-user) ───────────────────────────────
 
 app.get('/videos/:id/draws', async (req, res) => {
   if (!requireAuth(req, res)) return;
-  const draws = await q('SELECT * FROM video_draws WHERE video_id=$1 ORDER BY start_sec ASC', [req.params.id]);
-  const captions = await q('SELECT * FROM video_captions WHERE video_id=$1 ORDER BY start_sec ASC', [req.params.id]);
+  const draws = await q(
+    'SELECT * FROM video_draws WHERE video_id=$1 AND user_id=$2 ORDER BY start_sec ASC',
+    [req.params.id, req.session.uid]
+  );
+  const captions = await q(
+    'SELECT * FROM video_captions WHERE video_id=$1 AND user_id=$2 ORDER BY start_sec ASC',
+    [req.params.id, req.session.uid]
+  );
   res.json({ draws, captions });
 });
 
@@ -529,8 +535,8 @@ app.post('/videos/:id/draws', async (req, res) => {
   const { start_sec, end_sec, color = '#f5a623', width = 3, path_data } = req.body || {};
   if (start_sec == null || end_sec == null || !path_data) return sendErr(res, 'start_sec, end_sec and path_data required');
   const row = await one(
-    'INSERT INTO video_draws (video_id, start_sec, end_sec, color, width, path_data, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-    [req.params.id, parseFloat(start_sec), parseFloat(end_sec), color, parseInt(width), path_data, req.session.uid]
+    'INSERT INTO video_draws (video_id, user_id, start_sec, end_sec, color, width, path_data, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+    [req.params.id, req.session.uid, parseFloat(start_sec), parseFloat(end_sec), color, parseInt(width), path_data, req.session.uid]
   );
   res.json({ success: true, draw: row });
 });
@@ -538,18 +544,18 @@ app.post('/videos/:id/draws', async (req, res) => {
 app.delete('/videos/:id/draws/:did', async (req, res) => {
   if (!requireAuth(req, res)) return;
   if (!requireRole(req, res, 'editor')) return;
-  await q('DELETE FROM video_draws WHERE id=$1 AND video_id=$2', [req.params.did, req.params.id]);
+  await q('DELETE FROM video_draws WHERE id=$1 AND video_id=$2 AND user_id=$3', [req.params.did, req.params.id, req.session.uid]);
   res.json({ success: true });
 });
 
 app.post('/videos/:id/captions', async (req, res) => {
   if (!requireAuth(req, res)) return;
   if (!requireRole(req, res, 'editor')) return;
-  const { start_sec, end_sec, caption_text, pos_x = 50, pos_y = 85, color = '#ffffff', font_size = 16 } = req.body || {};
+  const { start_sec, end_sec, caption_text, color = '#ffffff', font_size = 16 } = req.body || {};
   if (start_sec == null || end_sec == null || !caption_text) return sendErr(res, 'start_sec, end_sec and caption_text required');
   const row = await one(
-    'INSERT INTO video_captions (video_id, start_sec, end_sec, caption_text, pos_x, pos_y, color, font_size, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
-    [req.params.id, parseFloat(start_sec), parseFloat(end_sec), caption_text.slice(0,500), parseFloat(pos_x), parseFloat(pos_y), color, parseInt(font_size), req.session.uid]
+    'INSERT INTO video_captions (video_id, user_id, start_sec, end_sec, caption_text, color, font_size, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+    [req.params.id, req.session.uid, parseFloat(start_sec), parseFloat(end_sec), caption_text.slice(0,500), color, parseInt(font_size), req.session.uid]
   );
   res.json({ success: true, caption: row });
 });
@@ -557,7 +563,7 @@ app.post('/videos/:id/captions', async (req, res) => {
 app.delete('/videos/:id/captions/:cid', async (req, res) => {
   if (!requireAuth(req, res)) return;
   if (!requireRole(req, res, 'editor')) return;
-  await q('DELETE FROM video_captions WHERE id=$1 AND video_id=$2', [req.params.cid, req.params.id]);
+  await q('DELETE FROM video_captions WHERE id=$1 AND video_id=$2 AND user_id=$3', [req.params.cid, req.params.id, req.session.uid]);
   res.json({ success: true });
 });
 

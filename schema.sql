@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS video_review (
 CREATE TABLE IF NOT EXISTS video_draws (
   id            SERIAL PRIMARY KEY,
   video_id      TEXT NOT NULL,
+  user_id       TEXT NOT NULL,
   start_sec     REAL NOT NULL,
   end_sec       REAL NOT NULL,
   color         TEXT DEFAULT '#f5a623',
@@ -185,11 +186,10 @@ CREATE TABLE IF NOT EXISTS video_draws (
 CREATE TABLE IF NOT EXISTS video_captions (
   id            SERIAL PRIMARY KEY,
   video_id      TEXT NOT NULL,
+  user_id       TEXT NOT NULL,
   start_sec     REAL NOT NULL,
   end_sec       REAL NOT NULL,
   caption_text  TEXT NOT NULL,
-  pos_x         REAL DEFAULT 50,
-  pos_y         REAL DEFAULT 85,
   color         TEXT DEFAULT '#ffffff',
   font_size     INTEGER DEFAULT 16,
   created_by    TEXT NOT NULL,
