@@ -314,7 +314,7 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
 .player-canvas-wrap{position:absolute;inset:0;pointer-events:none;}
 .player-canvas-wrap.drawing{pointer-events:all;cursor:crosshair;}
 .player-canvas-wrap.text-mode{pointer-events:all;cursor:text;}
-canvas#draw-canvas{position:absolute;inset:0;width:100%;height:100%;}
+.player-canvas-wrap canvas{position:absolute;top:0;left:0;width:100%;height:100%;}
 .caption-layer{position:absolute;inset:0;pointer-events:none;}
 .caption-el{position:absolute;transform:translate(-50%,-50%);text-align:center;font-family:var(--font-b);text-shadow:0 1px 4px rgba(0,0,0,.8);line-height:1.3;max-width:80%;word-break:break-word;}
 .player-controls{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;padding:.5rem 0;border-top:1px solid var(--dust);margin-top:.25rem;}
@@ -2385,21 +2385,23 @@ async function initPlayerOverlay(vid) {
   const canvasWrap = document.getElementById('canvas-wrap-' + vid);
   if (!canvas || !wrap) return;
 
+  // Measure from the iframe — it has the definitive rendered size from aspect-ratio CSS
+  const iframe = document.getElementById('yt-player-' + vid);
   function resizeCanvas() {
-    // getBoundingClientRect may return 0 before layout — fall back to offsetWidth/Height
-    // Use the wrap dimensions since canvas is absolute-positioned inside it
-    const w = wrap.offsetWidth || wrap.getBoundingClientRect().width || 640;
-    const h = wrap.offsetHeight || wrap.getBoundingClientRect().height || 360;
+    const target = iframe || wrap;
+    const r = target.getBoundingClientRect();
+    const w = Math.round(r.width) || 640;
+    const h = Math.round(r.height) || 360;
     if (canvas.width !== w || canvas.height !== h) {
       canvas.width = w;
       canvas.height = h;
     }
     redrawCanvas(vid);
   }
-  // Defer first resize until after browser has laid out the player
-  requestAnimationFrame(() => { requestAnimationFrame(resizeCanvas); });
+  // Double rAF ensures layout is complete before measuring
+  requestAnimationFrame(() => requestAnimationFrame(resizeCanvas));
   const ro = new ResizeObserver(resizeCanvas);
-  ro.observe(wrap);
+  ro.observe(iframe || wrap);
 
   // Drawing events
   canvas.addEventListener('mousedown', e => startDraw(e, vid));
@@ -2465,14 +2467,14 @@ function stopPlayerPoll(vid) {
 }
 
 function getCanvasPos(e, canvas) {
-  // Map mouse position to normalised 0-1 coords using display rect for position
-  // but we'll convert to pixel coords when drawing (canvas.width/height)
   const r = canvas.getBoundingClientRect();
-  const displayW = r.width || canvas.width;
-  const displayH = r.height || canvas.height;
+  // r.width/height = CSS display size, canvas.width/height = pixel buffer size
+  // Map mouse to pixel coords directly
+  const scaleX = canvas.width / (r.width || canvas.width);
+  const scaleY = canvas.height / (r.height || canvas.height);
   return {
-    x: (e.clientX - r.left) / displayW,
-    y: (e.clientY - r.top) / displayH
+    x: (e.clientX - r.left) * scaleX,
+    y: (e.clientY - r.top) * scaleY
   };
 }
 
@@ -2480,10 +2482,9 @@ function startDraw(e, vid) {
   const ps = getPS(vid);
   if (ps.tool !== 'pen') return;
   const canvas = document.getElementById('draw-canvas-' + vid);
-  if (!canvas) return;
+  if (!canvas || !canvas.width) return;
   ps.drawing = true;
-  const pos = getCanvasPos(e, canvas);
-  ps.path = [pos];
+  ps.path = [getCanvasPos(e, canvas)]; // pixel coords
   ps.drawStartSec = ps.currentSec || 0;
 }
 
@@ -2492,29 +2493,38 @@ function moveDraw(e, vid) {
   if (!ps.drawing || ps.tool !== 'pen') return;
   const canvas = document.getElementById('draw-canvas-' + vid);
   if (!canvas) return;
-  const pos = getCanvasPos(e, canvas);
-  // Clamp to canvas bounds
-  pos.x = Math.max(0, Math.min(1, pos.x));
-  pos.y = Math.max(0, Math.min(1, pos.y));
-  ps.path.push(pos);
-  renderLiveStroke(vid, canvas);
+  ps.path.push(getCanvasPos(e, canvas));
+  // Draw live stroke directly on canvas
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  redrawSavedStrokes(vid, ctx, canvas.width, canvas.height, ps.currentSec || 0);
+  if (ps.path.length > 1) {
+    ctx.strokeStyle = ps.color;
+    ctx.lineWidth = ps.width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(ps.path[0].x, ps.path[0].y);
+    for (let i = 1; i < ps.path.length; i++) ctx.lineTo(ps.path[i].x, ps.path[i].y);
+    ctx.stroke();
+  }
 }
 
 async function endDraw(vid) {
-  // Note: no event param — we don't add a position on end, just save what we have
   const ps = getPS(vid);
   if (!ps.drawing) return;
   ps.drawing = false;
   if (ps.path.length < 2) { ps.path = []; redrawCanvas(vid); return; }
   const pathStr = pathToSVG(ps.path);
   const endSec = (ps.currentSec || ps.drawStartSec) + 5;
+  const canvas = document.getElementById('draw-canvas-' + vid);
   try {
     const r = await api('POST', '/videos/' + vid + '/draws', {
       start_sec: ps.drawStartSec,
       end_sec: Math.max(endSec, ps.drawStartSec + 3),
-      color: ps.color,
-      width: ps.width,
-      path_data: pathStr
+      color: ps.color, width: ps.width, path_data: pathStr,
+      canvas_w: canvas ? canvas.width : 640,
+      canvas_h: canvas ? canvas.height : 360
     });
     ps.draws.push(r.draw);
     refreshDrawList(vid);
@@ -2523,15 +2533,8 @@ async function endDraw(vid) {
   redrawCanvas(vid);
 }
 
-function renderLiveStroke(vid, canvas) {
-  const ps = getPS(vid);
-  if (!canvas.width || !canvas.height) return; // not laid out yet
-  const ctx = canvas.getContext('2d');
-  const cw = canvas.width, ch = canvas.height;
-  ctx.clearRect(0, 0, cw, ch);
-  redrawSavedStrokes(vid, ctx, cw, ch, ps.currentSec || 0);
-  if (ps.path.length > 1) drawPathPts(ctx, ps.path, ps.color, ps.width, cw, ch);
-}
+// renderLiveStroke kept for compat but drawing now inline in moveDraw
+function renderLiveStroke(vid, canvas) {}
 
 function pathToSVG(pts) {
   if (!pts.length) return '';
@@ -2546,24 +2549,28 @@ function svgToPoints(d) {
   }).filter(p => !isNaN(p.x) && !isNaN(p.y));
 }
 
-function drawPathPts(ctx, pts, color, width, dw, dh) {
+function drawPathPts(ctx, pts, color, width) {
   if (pts.length < 2) return;
   ctx.strokeStyle = color;
   ctx.lineWidth = width;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
   ctx.beginPath();
-  ctx.moveTo(pts[0].x * dw, pts[0].y * dh);
-  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x * dw, pts[i].y * dh);
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
   ctx.stroke();
 }
 
-function redrawSavedStrokes(vid, ctx, dw, dh, currentSec) {
+function redrawSavedStrokes(vid, ctx, cw, ch, currentSec) {
   const ps = getPS(vid);
   ps.draws.forEach(d => {
     if (currentSec >= d.start_sec && currentSec <= d.end_sec) {
       const pts = svgToPoints(d.path_data);
-      drawPathPts(ctx, pts, d.color, d.width, dw, dh);
+      // pts are stored in pixel coords — scale to current canvas size
+      const scaleX = d.canvas_w ? cw / d.canvas_w : 1;
+      const scaleY = d.canvas_h ? ch / d.canvas_h : 1;
+      const scaledPts = pts.map(p => ({x: p.x * scaleX, y: p.y * scaleY}));
+      drawPathPts(ctx, scaledPts, d.color, d.width);
     }
   });
 }
