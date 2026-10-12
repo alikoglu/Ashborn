@@ -93,12 +93,16 @@ async function velocityTick() {
        LIMIT 20`
     );
     if (!due.length) return;
+    let had24h = false;
     for (const row of due) {
       await captureVelocity(row.video_id, row.snapshot_type);
       await q('UPDATE velocity_schedule SET done=1 WHERE id=$1', [row.id]);
+      if (row.snapshot_type === '24h') had24h = true;
       await sleep(200);
     }
     if (due.length) console.log(`[cron] velocityTick — captured ${due.length} snapshots`);
+    // After any 24h snapshots are captured, check for velocity spikes
+    if (had24h) runVelocitySpikeCheck().catch(e => console.error('[cron] velocitySpike bg error:', e.message));
   } catch (e) {
     console.error('[cron] velocityTick error:', e.message);
   }
@@ -430,16 +434,15 @@ async function runAutoHarvest() {
       const items = data.items || [];
       let channelAdded = 0;
 
-      // Check channel sub count against constraint
-      if (cfg.min_channel_subs > 0) {
-        const cData = await ytFetch(
-          `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${ch.channel_id}&key=${YT_KEY}`
-        );
-        const subs = parseInt(cData.items?.[0]?.statistics?.subscriberCount || '0');
-        if (subs < cfg.min_channel_subs) {
-          console.log(`[cron] autoHarvest skip channel ${ch.channel_name} — subs ${subs} < ${cfg.min_channel_subs}`);
-          continue;
-        }
+      // Fetch channel sub count (needed for both min_channel_subs check and views/sub ratio)
+      const cData = await ytFetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${ch.channel_id}&key=${YT_KEY}`
+      ).catch(() => null);
+      const channelSubs = parseInt(cData?.items?.[0]?.statistics?.subscriberCount || '0');
+
+      if (cfg.min_channel_subs > 0 && channelSubs < cfg.min_channel_subs) {
+        console.log(`[cron] autoHarvest skip channel ${ch.channel_name} — subs ${channelSubs} < ${cfg.min_channel_subs}`);
+        continue;
       }
 
       for (const item of items) {
@@ -460,7 +463,14 @@ async function runAutoHarvest() {
           `https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${videoId}&key=${YT_KEY}`
         ).catch(() => null);
         const views = parseInt(vStats?.items?.[0]?.statistics?.viewCount || '0');
-        if (views < cfg.min_views) { totalSkipped++; continue; }
+
+        // Views-per-sub ratio filter (cfg.min_views repurposed as ratio threshold, e.g. 0.5 = 50% of subs)
+        if (cfg.min_views > 0 && channelSubs > 0) {
+          const ratio = views / channelSubs;
+          if (ratio < cfg.min_views) { totalSkipped++; continue; }
+        } else if (cfg.min_views > 0 && channelSubs === 0) {
+          // no sub data available, skip ratio check
+        }
 
         console.log(`[cron] autoHarvest: harvesting ${videoId} (${views} views, ${ageDays.toFixed(1)} days old)`);
         const video = await autoAnalyzeVideo(videoId);
@@ -484,6 +494,506 @@ async function runAutoHarvest() {
     await sleep(400);
   }
   console.log(`[cron] autoHarvest done — ${totalAdded} added, ${totalSkipped} skipped`);
+}
+
+// ── Helper: insert a notification ─────────────────────────────
+
+async function notify(type, title, body, meta = {}) {
+  try {
+    await q(
+      `INSERT INTO notifications (type, title, body, meta) VALUES ($1,$2,$3,$4)`,
+      [type, title, body, JSON.stringify(meta)]
+    );
+  } catch (e) {
+    console.error('[cron] notify insert failed:', e.message);
+  }
+}
+
+// ── Job 5: Velocity spike re-harvest ──────────────────────────
+// After 24h snapshot: if views/sub ratio jumped 3× vs the channel's
+// 30d average, auto-pull the video into the DB even if it wasn't
+// from a watchlist channel. Also flags it with perf_label='spike'.
+
+async function runVelocitySpikeCheck() {
+  if (!YT_KEY) return;
+  console.log('[cron] velocitySpike — checking for spikes in 24h snapshots...');
+  try {
+    // Find 24h snapshots just captured (last 30 minutes) for videos NOT already in our DB
+    // We cross-reference all videos that have a fresh 24h snapshot
+    const spikes = await q(`
+      SELECT vv.video_id, vv.views, v.channel_id, v.channel_size
+      FROM video_velocity vv
+      JOIN videos v ON vv.video_id = v.video_id
+      WHERE vv.snapshot_type = '24h'
+        AND vv.captured_at >= NOW() - INTERVAL '35 minutes'
+        AND v.channel_size <> '0'
+        AND v.channel_size <> ''
+    `);
+
+    if (!spikes.length) return;
+    console.log(`[cron] velocitySpike — checking ${spikes.length} fresh 24h snapshots`);
+
+    for (const row of spikes) {
+      const subs = parseInt(row.channel_size || '0');
+      if (!subs) continue;
+      const ratio = row.views / subs;
+
+      // Fetch channel's average views/sub ratio over the last 30 days from our DB
+      const avgRow = await one(`
+        SELECT AVG(CAST(views_total AS BIGINT)::float / NULLIF(CAST(channel_size AS BIGINT), 0)) AS avg_ratio
+        FROM videos
+        WHERE channel_id = $1
+          AND published_at >= (NOW() - INTERVAL '30 days')::date::text
+          AND channel_size <> '0'
+      `, [row.channel_id]);
+
+      const avgRatio = parseFloat(avgRow?.avg_ratio || '0');
+      if (!avgRatio) continue;
+
+      const multiplier = ratio / avgRatio;
+      if (multiplier >= 3) {
+        console.log(`[cron] velocitySpike: ${row.video_id} ratio ${ratio.toFixed(2)} is ${multiplier.toFixed(1)}× channel avg — flagging!`);
+        // Mark with spike label in videos table
+        await q(
+          `UPDATE videos SET perf_label='spike', updated_at=NOW() WHERE video_id=$1`,
+          [row.video_id]
+        );
+        // Create notification
+        const vidRow = await one('SELECT video_title, channel_name FROM videos WHERE video_id=$1', [row.video_id]);
+        await notify(
+          'velocity_spike',
+          `🚀 Velocity spike: ${vidRow?.channel_name || row.video_id}`,
+          `"${vidRow?.video_title || row.video_id}" hit ${ratio.toFixed(1)}× views/sub (${multiplier.toFixed(1)}× above channel average) in just 24 hours.`,
+          { video_id: row.video_id, ratio, multiplier, avg_ratio: avgRatio }
+        );
+      }
+    }
+  } catch (e) {
+    console.error('[cron] velocitySpike error:', e.message);
+  }
+}
+
+// ── Job 6: Auto workspace tagging ─────────────────────────────
+// Videos harvested in the last 24h that match high-performer patterns
+// (views/sub ratio ≥ 1.0 AND perf_score > 70 OR intro_score > 75)
+// get auto-added to a "High Performers" workspace if one exists.
+
+async function runAutoTag() {
+  console.log('[cron] autoTag — tagging high-performers...');
+  try {
+    // Find or create the High Performers workspace (master-owned, special)
+    let ws = await one(`SELECT id FROM workspaces WHERE name='High Performers' LIMIT 1`);
+    if (!ws) {
+      // Create it under the first admin user
+      const admin = await one(`SELECT id FROM users WHERE role='admin' LIMIT 1`);
+      if (!admin) return;
+      const wsId = require('crypto').randomBytes(5).toString('hex').slice(0, 8);
+      await q(
+        `INSERT INTO workspaces (id, name, description, icon, owner_id, is_master)
+         VALUES ($1,$2,$3,$4,$5,0)`,
+        [wsId, 'High Performers', 'Auto-tagged videos with exceptional views/sub ratios', '🏆', admin.id]
+      );
+      ws = { id: wsId };
+      console.log('[cron] autoTag — created "High Performers" workspace:', wsId);
+    }
+
+    // Find recent videos meeting high-performer thresholds not yet in this workspace
+    const candidates = await q(`
+      SELECT v.video_id, v.video_title, v.channel_name, v.channel_size, v.views_total,
+             v.perf_score, v.intro_score
+      FROM videos v
+      WHERE v.created_at >= NOW() - INTERVAL '24 hours'
+        AND v.channel_size <> '0' AND v.channel_size <> ''
+        AND v.views_total <> '0' AND v.views_total <> ''
+        AND NOT EXISTS (
+          SELECT 1 FROM video_workspaces vw WHERE vw.video_id=v.video_id AND vw.workspace_id=$1
+        )
+    `, [ws.id]);
+
+    let tagged = 0;
+    for (const v of candidates) {
+      const subs  = parseInt(v.channel_size || '0');
+      const views = parseInt(v.views_total  || '0');
+      if (!subs) continue;
+      const ratio = views / subs;
+      // Threshold: ratio ≥ 1.0 (video got views equal to 100% of channel subs) OR
+      //            ratio ≥ 0.5 AND (perf_score > 70 OR intro_score > 75)
+      const isHighPerformer = ratio >= 1.0 ||
+        (ratio >= 0.5 && (v.perf_score > 70 || v.intro_score > 75));
+
+      if (isHighPerformer) {
+        await q(
+          `INSERT INTO video_workspaces (video_id, workspace_id, added_by)
+           VALUES ($1,$2,'auto-tag') ON CONFLICT DO NOTHING`,
+          [v.video_id, ws.id]
+        );
+        tagged++;
+        console.log(`[cron] autoTag: tagged ${v.video_id} (ratio=${ratio.toFixed(2)}, perf=${v.perf_score})`);
+      }
+    }
+
+    if (tagged > 0) {
+      await notify(
+        'auto_tag',
+        `🏆 ${tagged} video${tagged>1?'s':''} auto-tagged as High Performers`,
+        `${tagged} new video${tagged>1?'s':''} met the high-performer threshold (views/sub ≥ 1.0 or ≥ 0.5 with strong scores) and ${tagged>1?'were':'was'} added to the High Performers workspace.`,
+        { count: tagged, workspace_id: ws.id }
+      );
+    }
+    console.log(`[cron] autoTag done — ${tagged} tagged`);
+  } catch (e) {
+    console.error('[cron] autoTag error:', e.message);
+  }
+}
+
+// ── Job 7: Competitor alert ────────────────────────────────────
+// If a watchlist channel's recent video 2× outperforms their 30d average
+// views/sub ratio, create a notification.
+
+async function runCompetitorAlert() {
+  if (!YT_KEY) return;
+  console.log('[cron] competitorAlert — checking watchlist channels...');
+  try {
+    const channels = await q('SELECT * FROM channel_monitor WHERE active=1');
+    if (!channels.length) return;
+
+    for (const ch of channels) {
+      try {
+        // Get channel's 30d average views/sub ratio from our DB
+        const avgRow = await one(`
+          SELECT AVG(CAST(views_total AS BIGINT)::float / NULLIF(CAST(channel_size AS BIGINT), 0)) AS avg_ratio,
+                 COUNT(*) AS cnt
+          FROM videos
+          WHERE channel_id = $1
+            AND published_at >= (NOW() - INTERVAL '30 days')::date::text
+            AND channel_size <> '0'
+        `, [ch.channel_id]);
+
+        const avgRatio = parseFloat(avgRow?.avg_ratio || '0');
+        const cnt = parseInt(avgRow?.cnt || '0');
+        // Need at least 3 videos to establish a meaningful baseline
+        if (!avgRatio || cnt < 3) continue;
+
+        // Check their most recent video (added in last 48h)
+        const recent = await one(`
+          SELECT video_id, video_title, views_total, channel_size
+          FROM videos
+          WHERE channel_id = $1
+            AND created_at >= NOW() - INTERVAL '48 hours'
+          ORDER BY created_at DESC
+          LIMIT 1
+        `, [ch.channel_id]);
+
+        if (!recent) continue;
+
+        const subs  = parseInt(recent.channel_size || '0');
+        const views = parseInt(recent.views_total  || '0');
+        if (!subs) continue;
+
+        const recentRatio = views / subs;
+        const multiplier  = avgRatio > 0 ? recentRatio / avgRatio : 0;
+
+        if (multiplier >= 2) {
+          // Check we haven't already notified for this video
+          const alreadyNotified = await one(
+            `SELECT 1 FROM notifications WHERE type='competitor_alert' AND meta::json->>'video_id'=$1`,
+            [recent.video_id]
+          );
+          if (alreadyNotified) continue;
+
+          console.log(`[cron] competitorAlert: ${ch.channel_name} breakout — ${recent.video_id} is ${multiplier.toFixed(1)}× avg`);
+          await notify(
+            'competitor_alert',
+            `⚡ Breakout: ${ch.channel_name}`,
+            `"${recent.video_title}" is performing ${multiplier.toFixed(1)}× above their 30-day average (${recentRatio.toFixed(2)} vs avg ${avgRatio.toFixed(2)} views/sub). This could signal a trending format worth studying.`,
+            { video_id: recent.video_id, channel_id: ch.channel_id, channel_name: ch.channel_name, multiplier, recent_ratio: recentRatio, avg_ratio: avgRatio }
+          );
+        }
+      } catch (e) {
+        console.error(`[cron] competitorAlert error for ${ch.channel_name}:`, e.message);
+      }
+      await sleep(200);
+    }
+    console.log('[cron] competitorAlert done');
+  } catch (e) {
+    console.error('[cron] competitorAlert error:', e.message);
+  }
+}
+
+// ── Job 8: Trend detection (weekly) ───────────────────────────
+// Finds title words/formats whose avg perf_score increased vs the prior week.
+// Runs on Sunday 04:00 UTC.
+
+async function runTrendDetection() {
+  console.log('[cron] trendDetection — scanning title patterns...');
+  try {
+    // Compare videos published this week vs last week by format
+    const formatTrends = await q(`
+      SELECT
+        format,
+        AVG(CASE WHEN published_at >= (NOW() - INTERVAL '7 days')::date::text  THEN perf_score END) AS this_week,
+        AVG(CASE WHEN published_at >= (NOW() - INTERVAL '14 days')::date::text
+                  AND published_at <  (NOW() - INTERVAL '7 days')::date::text  THEN perf_score END) AS last_week,
+        COUNT(CASE WHEN published_at >= (NOW() - INTERVAL '7 days')::date::text THEN 1 END) AS this_week_count
+      FROM videos
+      WHERE published_at >= (NOW() - INTERVAL '14 days')::date::text
+        AND format <> '' AND format <> 'other'
+        AND perf_score > 0
+      GROUP BY format
+      HAVING COUNT(*) >= 3
+    `);
+
+    // Find trending words in titles (simple tokenization)
+    const wordTrends = await q(`
+      WITH words AS (
+        SELECT
+          LOWER(REGEXP_REPLACE(w, '[^a-z0-9]', '', 'g')) AS word,
+          perf_score,
+          published_at
+        FROM videos,
+        LATERAL UNNEST(STRING_TO_ARRAY(video_title, ' ')) AS w
+        WHERE published_at >= (NOW() - INTERVAL '14 days')::date::text
+          AND perf_score > 0
+          AND LENGTH(w) >= 4
+      )
+      SELECT
+        word,
+        AVG(CASE WHEN published_at >= (NOW() - INTERVAL '7 days')::date::text  THEN perf_score END) AS this_week,
+        AVG(CASE WHEN published_at >= (NOW() - INTERVAL '14 days')::date::text
+                  AND published_at <  (NOW() - INTERVAL '7 days')::date::text  THEN perf_score END) AS last_week,
+        COUNT(CASE WHEN published_at >= (NOW() - INTERVAL '7 days')::date::text THEN 1 END) AS this_week_count
+      FROM words
+      WHERE word <> '' AND word NOT IN ('with','that','this','from','have','your','been','will','they','what','when','which','were','into','than','then','them','some','more','also','just','like','only','can','but','and','not','for','the','are','was','all','its')
+      GROUP BY word
+      HAVING COUNT(*) >= 3
+      ORDER BY (COALESCE(this_week,0) - COALESCE(last_week,0)) DESC
+      LIMIT 20
+    `);
+
+    // Build trend report
+    const risingFormats = formatTrends
+      .filter(r => r.this_week && r.last_week && r.this_week > r.last_week)
+      .map(r => ({ name: r.format, delta: (r.this_week - r.last_week).toFixed(1), count: r.this_week_count }))
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 5);
+
+    const risingWords = wordTrends
+      .filter(r => r.this_week && r.last_week && r.this_week > r.last_week && r.this_week_count >= 2)
+      .map(r => ({ word: r.word, delta: (r.this_week - r.last_week).toFixed(1) }))
+      .slice(0, 10);
+
+    if (!risingFormats.length && !risingWords.length) {
+      console.log('[cron] trendDetection — not enough data for trends yet');
+      return;
+    }
+
+    const fmtList  = risingFormats.map(f => `${f.name} (+${f.delta} pts, ${f.count} videos)`).join(' · ');
+    const wordList = risingWords.map(w => `"${w.word}" (+${w.delta} pts)`).join(' · ');
+
+    let body = '';
+    if (fmtList)  body += `Rising formats this week: ${fmtList}. `;
+    if (wordList) body += `Trending title words: ${wordList}.`;
+
+    await notify(
+      'trend',
+      `📈 Weekly trend report — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+      body.trim(),
+      { rising_formats: risingFormats, rising_words: risingWords }
+    );
+
+    console.log(`[cron] trendDetection done — ${risingFormats.length} format trends, ${risingWords.length} word trends`);
+  } catch (e) {
+    console.error('[cron] trendDetection error:', e.message);
+  }
+}
+
+// ── Job 9: Dead video pruning ─────────────────────────────────
+// Videos older than 30 days with views/sub ratio < 0.1 are flagged
+// with perf_label='pruned' and removed from the master workspace
+// (NOT deleted from DB — data is preserved for analysis).
+
+async function runDeadVideoPruning() {
+  console.log('[cron] deadVideoPruning — scanning for underperformers...');
+  try {
+    const dead = await q(`
+      SELECT v.video_id, v.video_title, v.channel_name, v.views_total, v.channel_size
+      FROM videos v
+      WHERE v.published_at <= (NOW() - INTERVAL '30 days')::date::text
+        AND v.channel_size <> '0' AND v.channel_size <> ''
+        AND v.views_total <> '0'
+        AND v.perf_label <> 'pruned'
+        AND (CAST(v.views_total AS BIGINT)::float / NULLIF(CAST(v.channel_size AS BIGINT), 0)) < 0.1
+      LIMIT 100
+    `);
+
+    if (!dead.length) {
+      console.log('[cron] deadVideoPruning — no dead videos found');
+      return;
+    }
+
+    const ids = dead.map(v => v.video_id);
+    const master = await one('SELECT id FROM workspaces WHERE is_master=1');
+
+    // Flag in videos table
+    for (const id of ids) {
+      await q(`UPDATE videos SET perf_label='pruned', updated_at=NOW() WHERE video_id=$1`, [id]);
+    }
+
+    // Remove from master workspace only (keep in other workspaces)
+    if (master) {
+      for (const id of ids) {
+        await q(
+          `DELETE FROM video_workspaces WHERE video_id=$1 AND workspace_id=$2`,
+          [id, master.id]
+        );
+      }
+    }
+
+    await notify(
+      'dead_pruned',
+      `🗑️ Dead video pruning: ${dead.length} video${dead.length > 1 ? 's' : ''} removed from master`,
+      `${dead.length} video${dead.length > 1 ? 's' : ''} older than 30 days with a views/sub ratio below 0.1 ${dead.length > 1 ? 'were' : 'was'} flagged as "pruned" and removed from the master workspace. Data is preserved for analysis.`,
+      { count: dead.length, video_ids: ids.slice(0, 20) }
+    );
+
+    console.log(`[cron] deadVideoPruning done — ${dead.length} videos pruned`);
+  } catch (e) {
+    console.error('[cron] deadVideoPruning error:', e.message);
+  }
+}
+
+// ── Job 10: Weekly analytics summary (AI-generated) ───────────
+// Runs every Sunday 05:00 UTC. Pulls week's stats, asks Claude to
+// write a short assessment, stores as 'weekly_summary' notification.
+
+async function runWeeklySummary() {
+  console.log('[cron] weeklySummary — generating...');
+  try {
+    // Gather this week's data
+    const [videoStats, topVideos, formatBreakdown, channelStats] = await Promise.all([
+      // Overall stats for the week
+      one(`
+        SELECT
+          COUNT(*)                                                        AS total_videos,
+          COUNT(CASE WHEN created_at >= NOW() - INTERVAL '7 days' THEN 1 END) AS new_this_week,
+          ROUND(AVG(perf_score)::numeric, 1)                              AS avg_perf_score,
+          ROUND(AVG(intro_score)::numeric, 1)                             AS avg_intro_score,
+          COUNT(CASE WHEN perf_label='spike'  THEN 1 END)                AS spikes,
+          COUNT(CASE WHEN perf_label='pruned' THEN 1 END)                AS pruned
+        FROM videos
+      `),
+      // Top 5 performers this week by perf_score
+      q(`
+        SELECT video_title, channel_name, perf_score, views_total, channel_size
+        FROM videos
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+          AND perf_score > 0
+        ORDER BY perf_score DESC LIMIT 5
+      `),
+      // Format breakdown this week
+      q(`
+        SELECT format, COUNT(*) AS cnt,
+               ROUND(AVG(perf_score)::numeric, 1) AS avg_score
+        FROM videos
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+          AND format <> '' AND perf_score > 0
+        GROUP BY format ORDER BY avg_score DESC
+      `),
+      // Channels added this week
+      q(`
+        SELECT channel_name, COUNT(*) AS videos_added
+        FROM videos
+        WHERE created_at >= NOW() - INTERVAL '7 days'
+        GROUP BY channel_name ORDER BY videos_added DESC LIMIT 5
+      `),
+    ]);
+
+    const weekDate = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
+    // Build context for AI
+    const topVideosList = topVideos.map((v, i) =>
+      `${i+1}. "${v.video_title}" by ${v.channel_name} — perf_score ${v.perf_score}, ${v.views_total} views`
+    ).join('\n');
+
+    const formatList = formatBreakdown.map(f =>
+      `${f.format}: ${f.cnt} videos, avg score ${f.avg_score}`
+    ).join(', ');
+
+    const channelList = channelStats.map(c =>
+      `${c.channel_name} (${c.videos_added} videos)`
+    ).join(', ');
+
+    const statsBlock = `
+Week ending ${weekDate}:
+- Total videos in library: ${videoStats?.total_videos || 0}
+- New videos harvested this week: ${videoStats?.new_this_week || 0}
+- Library avg performance score: ${videoStats?.avg_perf_score || 'N/A'}/100
+- Library avg intro score: ${videoStats?.avg_intro_score || 'N/A'}/100
+- Velocity spikes detected: ${videoStats?.spikes || 0}
+- Videos pruned (underperformers): ${videoStats?.pruned || 0}
+
+Top performers this week:
+${topVideosList || 'None yet'}
+
+Format breakdown: ${formatList || 'N/A'}
+Most active channels: ${channelList || 'N/A'}
+    `.trim();
+
+    let summaryBody = statsBlock; // fallback if no AI key
+
+    if (process.env.ANTHROPIC_API_KEY) {
+      try {
+        const prompt = `You are an analyst for Ashborn Studios, a Minecraft YouTube content strategy agency. You monitor competitor videos to identify winning formats and patterns.
+
+Here is this week's data from the Content Lab:
+
+${statsBlock}
+
+Write a concise weekly assessment (150-200 words) covering:
+1. What the data says about the week — standout performers and why they likely succeeded
+2. Format/formula trends worth paying attention to
+3. One specific, actionable recommendation for content strategy this week
+
+Write in a direct, analytical tone. No fluff. Focus on patterns and implications.`;
+
+        const aiRes = await fetch(`${ANTHROPIC_BASE}/v1/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': process.env.ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01',
+          },
+          body: JSON.stringify({
+            model: AI_MODEL,
+            max_tokens: 400,
+            system: 'You are a content strategy analyst. Write clearly and concisely.',
+            messages: [{ role: 'user', content: prompt }],
+          }),
+        });
+        const aiData = await aiRes.json();
+        const aiText = aiData.content?.find(c => c.type === 'text')?.text;
+        if (aiText) summaryBody = aiText;
+      } catch (e) {
+        console.error('[cron] weeklySummary AI call failed, using raw stats:', e.message);
+      }
+    }
+
+    await notify(
+      'weekly_summary',
+      `📊 Weekly Report — ${weekDate}`,
+      summaryBody,
+      {
+        new_this_week: videoStats?.new_this_week || 0,
+        total_videos: videoStats?.total_videos || 0,
+        spikes: videoStats?.spikes || 0,
+        pruned: videoStats?.pruned || 0,
+      }
+    );
+
+    console.log('[cron] weeklySummary done');
+  } catch (e) {
+    console.error('[cron] weeklySummary error:', e.message);
+  }
 }
 
 // ── Scheduler ─────────────────────────────────────────────────
@@ -510,6 +1020,27 @@ function scheduleDaily(job, name, hourUTC = 2) {
   console.log(`[cron] ${name} scheduled → ${next.toISOString()}`);
 }
 
+// Schedule something to run weekly on a specific day/hour UTC.
+// dayOfWeek: 0=Sun, 1=Mon ... 6=Sat
+function scheduleWeekly(job, name, dayOfWeek, hourUTC) {
+  function msUntilWeekly() {
+    const now  = new Date();
+    const next = new Date(now);
+    next.setUTCHours(hourUTC, 0, 0, 0);
+    const daysUntil = ((dayOfWeek - now.getUTCDay()) + 7) % 7 || 7;
+    next.setUTCDate(next.getUTCDate() + (daysUntil === 7 && next <= now ? 7 : daysUntil));
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 7);
+    return next.getTime() - now.getTime();
+  }
+  function loop() {
+    job();
+    setTimeout(loop, 7 * 24 * 60 * 60 * 1000).unref();
+  }
+  setTimeout(loop, msUntilWeekly()).unref();
+  const next = new Date(Date.now() + msUntilWeekly());
+  console.log(`[cron] ${name} scheduled weekly → ${next.toISOString()}`);
+}
+
 // ── Exported init ─────────────────────────────────────────────
 
 function startCron() {
@@ -524,8 +1055,13 @@ function startCron() {
 
   scheduleTwiceDaily(runStatsRefresh,   'statsRefresh');
   scheduleTwiceDaily(runChannelMonitor, 'channelMonitor');
-  scheduleDaily(runAutoHarvest,         'autoHarvest', 2); // 02:00 UTC daily
-  console.log('[cron] background jobs initialized');
+  scheduleDaily(runAutoHarvest,         'autoHarvest',         2);  // 02:00 UTC daily
+  scheduleDaily(runAutoTag,             'autoTag',             3);  // 03:00 UTC daily
+  scheduleDaily(runCompetitorAlert,     'competitorAlert',     7);  // 07:00 UTC daily
+  scheduleDaily(runDeadVideoPruning,    'deadVideoPruning',    23); // 23:00 UTC daily
+  scheduleWeekly(runTrendDetection,     'trendDetection',      0,  4); // Sunday 04:00 UTC
+  scheduleWeekly(runWeeklySummary,      'weeklySummary',       0,  5); // Sunday 05:00 UTC
+  console.log('[cron] background jobs initialized (5 automation + weekly summary active)');
 }
 
 module.exports = {
@@ -533,6 +1069,11 @@ module.exports = {
   runStatsRefresh,
   runChannelMonitor,
   runAutoHarvest,
+  runAutoTag,
+  runCompetitorAlert,
+  runDeadVideoPruning,
+  runTrendDetection,
+  runWeeklySummary,
   scheduleVelocitySnapshots,
   captureVelocity,
 };

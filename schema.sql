@@ -162,10 +162,21 @@ CREATE TABLE IF NOT EXISTS harvest_config (
   enabled             INTEGER DEFAULT 1,
   videos_per_channel  INTEGER DEFAULT 5,   -- max videos to harvest per channel per run
   max_age_days        INTEGER DEFAULT 30,  -- skip videos older than this
-  min_views           INTEGER DEFAULT 0,   -- skip videos below this view count
+  min_views           DOUBLE PRECISION DEFAULT 0,  -- views/sub ratio threshold (e.g. 0.5 = video got 50% of channel subs as views)
   min_channel_subs    INTEGER DEFAULT 0,   -- skip channels below this sub count
   require_transcript  INTEGER DEFAULT 0,   -- only harvest if transcript is available
   updated_at          TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Notifications — in-app alerts for automation events and weekly summaries
+CREATE TABLE IF NOT EXISTS notifications (
+  id          SERIAL PRIMARY KEY,
+  type        TEXT NOT NULL,           -- 'competitor_alert'|'trend'|'weekly_summary'|'velocity_spike'|'dead_pruned'
+  title       TEXT NOT NULL,
+  body        TEXT DEFAULT '',
+  meta        TEXT DEFAULT '{}',       -- JSON blob for extra context (video_id, channel, etc.)
+  read        INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS video_annotations (
@@ -227,6 +238,8 @@ CREATE INDEX IF NOT EXISTS idx_vw_workspace     ON video_workspaces(workspace_id
 CREATE INDEX IF NOT EXISTS idx_vw_video         ON video_workspaces(video_id);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_user    ON ai_usage(user_id, date);
 CREATE INDEX IF NOT EXISTS idx_videos_created   ON videos(created_at);
+CREATE INDEX IF NOT EXISTS idx_notif_read       ON notifications(read, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notif_type       ON notifications(type);
 CREATE INDEX IF NOT EXISTS idx_annotations_vid  ON video_annotations(video_id);
 CREATE INDEX IF NOT EXISTS idx_annotations_ts   ON video_annotations(video_id, timestamp_sec);
 CREATE INDEX IF NOT EXISTS idx_draws_vid        ON video_draws(video_id, start_sec);
@@ -256,6 +269,15 @@ DO $$ BEGIN
     -- table doesn't exist yet — created above via CREATE TABLE IF NOT EXISTS
     NULL;
   END IF;
+  -- harvest_config: migrate min_views to float if still integer
+  BEGIN
+    ALTER TABLE harvest_config ALTER COLUMN min_views TYPE DOUBLE PRECISION;
+  EXCEPTION WHEN others THEN NULL;
+  END;
   -- harvest_config: seed default row if missing
   INSERT INTO harvest_config (id) VALUES (1) ON CONFLICT DO NOTHING;
+  -- notifications: add meta column if table existed without it
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='notifications' AND column_name='meta') THEN
+    ALTER TABLE notifications ADD COLUMN meta TEXT DEFAULT '{}';
+  END IF;
 END $$;

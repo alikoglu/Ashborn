@@ -13,7 +13,9 @@ const crypto = require('crypto');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { q, one, migrate, seed } = require('./db');
-const { startCron, runStatsRefresh, runChannelMonitor, runAutoHarvest } = require('./cron');
+const { startCron, runStatsRefresh, runChannelMonitor, runAutoHarvest,
+        runAutoTag, runCompetitorAlert, runDeadVideoPruning,
+        runTrendDetection, runWeeklySummary } = require('./cron');
 
 
 const app = express();
@@ -607,27 +609,7 @@ app.delete('/admin/channels/:id', async (req, res) => {
   res.json({ success: true });
 });
 
-// Manual trigger endpoints (admin only — useful for testing without waiting for schedule)
-app.post('/admin/cron/refresh', async (req, res) => {
-  if (!requireAuth(req, res)) return;
-  if (!requireRole(req, res, 'admin')) return;
-  res.json({ success: true, message: 'Stats refresh started in background' });
-  runStatsRefresh().catch(e => console.error('[manual refresh]', e.message));
-});
-
-app.post('/admin/cron/monitor', async (req, res) => {
-  if (!requireAuth(req, res)) return;
-  if (!requireRole(req, res, 'admin')) return;
-  res.json({ success: true, message: 'Channel monitor started in background' });
-  runChannelMonitor().catch(e => console.error('[manual monitor]', e.message));
-});
-
-app.post('/admin/cron/harvest', async (req, res) => {
-  if (!requireAuth(req, res)) return;
-  if (!requireRole(req, res, 'admin')) return;
-  res.json({ success: true, message: 'Auto-harvest started in background' });
-  runAutoHarvest().catch(e => console.error('[manual harvest]', e.message));
-});
+// Manual cron triggers are handled by the generic POST /admin/cron/:job route below (in NOTIFICATIONS section)
 
 // ── Velocity schedule ─────────────────────────────────────────
 app.get('/admin/velocity-schedule', async (req, res) => {
@@ -671,7 +653,7 @@ app.patch('/admin/harvest-config', async (req, res) => {
       enabled            != null ? (enabled ? 1 : 0)            : null,
       videos_per_channel != null ? parseInt(videos_per_channel) : null,
       max_age_days       != null ? parseInt(max_age_days)       : null,
-      min_views          != null ? parseInt(min_views)          : null,
+      min_views          != null ? parseFloat(min_views)        : null,
       min_channel_subs   != null ? parseInt(min_channel_subs)   : null,
       require_transcript != null ? (require_transcript ? 1 : 0) : null,
     ]
@@ -816,6 +798,60 @@ app.post('/ai', async (req, res) => {
   if (!ok) return sendErr(res, data?.error?.message || 'Anthropic error', 502);
   const reply = data.content?.find(c => c.type === 'text')?.text || 'No response.';
   res.json({ reply, usage });
+});
+
+// ══════════════════════════════════════════════════════════════
+// NOTIFICATIONS
+// ══════════════════════════════════════════════════════════════
+
+// GET /notifications — list recent notifications (last 50), unread first
+app.get('/notifications', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const rows = await q(
+    `SELECT id, type, title, body, meta, read, created_at
+     FROM notifications
+     ORDER BY read ASC, created_at DESC
+     LIMIT 50`
+  );
+  const unread = rows.filter(r => !r.read).length;
+  res.json({ rows, unread });
+});
+
+// PATCH /notifications/:id/read — mark one notification as read
+app.patch('/notifications/:id/read', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  await q('UPDATE notifications SET read=1 WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
+});
+
+// POST /notifications/read-all — mark all as read
+app.post('/notifications/read-all', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  await q('UPDATE notifications SET read=1 WHERE read=0');
+  res.json({ ok: true });
+});
+
+// POST /admin/cron/:job — manual trigger for any automation job
+app.post('/admin/cron/:job', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const jobs = {
+    refresh:    runStatsRefresh,
+    monitor:    runChannelMonitor,
+    harvest:    runAutoHarvest,
+    autotag:    runAutoTag,
+    competitor: runCompetitorAlert,
+    pruning:    runDeadVideoPruning,
+    trends:     runTrendDetection,
+    weekly:     runWeeklySummary,
+  };
+  const job = jobs[req.params.job];
+  if (!job) return sendErr(res, `Unknown job: ${req.params.job}. Valid: ${Object.keys(jobs).join(', ')}`);
+  res.json({ success: true, message: `${req.params.job} started in background` });
+  job().catch(e => console.error(`[manual ${req.params.job}]`, e.message));
 });
 
 // ══════════════════════════════════════════════════════════════
