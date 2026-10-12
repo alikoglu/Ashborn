@@ -193,6 +193,22 @@ table.dt .hi{color:var(--glow);font-family:var(--font-m);}
 
 /* ADMIN */
 .admin-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;}
+/* tracker */
+.tracker-section{padding:1.5rem 0;border-bottom:1px solid var(--dust);}
+.tracker-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1rem;}
+.tracker-section-title{font-size:.88rem;font-weight:600;color:var(--white);letter-spacing:.02em;}
+.tracker-section-sub{font-size:.7rem;color:var(--smoke);margin-top:.2rem;}
+.harvest-label{font-size:.72rem;font-weight:600;color:var(--mist);letter-spacing:.04em;text-transform:uppercase;margin-bottom:.15rem;}
+.harvest-hint{font-size:.66rem;color:var(--smoke);margin-bottom:.4rem;line-height:1.4;}
+.harvest-input{width:100%;padding:7px 10px;background:var(--ash3);border:1px solid var(--dust);border-radius:var(--r);color:var(--white);font-size:.82rem;font-family:var(--font-b);}
+.harvest-input:focus{outline:none;border-color:var(--ember);}
+/* toggle switch */
+.toggle-switch{position:relative;display:inline-flex;cursor:pointer;flex-shrink:0;}
+.toggle-switch input{position:absolute;opacity:0;width:0;height:0;}
+.toggle-track{display:block;width:36px;height:20px;background:var(--dust);border-radius:10px;transition:background .2s;position:relative;}
+.toggle-switch input:checked+.toggle-track{background:var(--ember);}
+.toggle-thumb{position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:var(--white);transition:left .2s;}
+.toggle-switch input:checked+.toggle-track .toggle-thumb{left:19px;}
 .user-list-item{display:flex;align-items:center;gap:.75rem;padding:.75rem;background:var(--ash3);border:1px solid var(--dust);border-radius:var(--r);margin-bottom:.5rem;}
 .user-list-avatar{width:32px;height:32px;background:rgba(232,98,42,.15);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem;color:var(--ember);flex-shrink:0;}
 .user-list-info{flex:1;}
@@ -333,6 +349,28 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
 .pvt-btn{font-size:.68rem;padding:4px 12px;border-radius:20px;border:1px solid var(--dust);background:var(--ash3);color:var(--smoke);cursor:pointer;}
 .pvt-btn.active{background:rgba(232,98,42,.12);border-color:var(--ember);color:var(--ember);}
 
+/* NOTIFICATION BELL + PANEL */
+.notif-bell{position:relative;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--r);border:1px solid var(--dust);background:var(--ash3);color:var(--mist);transition:color .15s,border-color .15s;flex-shrink:0;}
+.notif-bell:hover{color:var(--white);border-color:var(--mist);}
+.notif-badge{position:absolute;top:-5px;right:-5px;background:var(--ember);color:#fff;font-size:.55rem;font-family:var(--font-m);width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--ash);display:none;}
+.notif-panel{position:fixed;top:56px;right:1rem;width:380px;max-height:520px;background:var(--ash2);border:1px solid var(--dust);border-radius:var(--r-lg);z-index:200;display:none;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6);}
+.notif-panel.open{display:flex;}
+.notif-panel-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--dust);}
+.notif-panel-title{font-size:.78rem;font-weight:600;color:var(--white);}
+.notif-read-all{font-size:.68rem;color:var(--smoke);cursor:pointer;font-family:var(--font-m);}
+.notif-read-all:hover{color:var(--ember);}
+.notif-list{overflow-y:auto;flex:1;}
+.notif-item{display:flex;gap:.75rem;padding:.85rem 1rem;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .15s;position:relative;}
+.notif-item:hover{background:rgba(255,255,255,.03);}
+.notif-item.unread{background:rgba(232,98,42,.04);}
+.notif-item.unread::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ember);}
+.notif-icon{font-size:1.1rem;flex-shrink:0;margin-top:.1rem;}
+.notif-body{flex:1;min-width:0;}
+.notif-title-text{font-size:.78rem;font-weight:500;color:var(--white);margin-bottom:.2rem;line-height:1.3;}
+.notif-body-text{font-size:.7rem;color:var(--smoke);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
+.notif-time{font-size:.6rem;color:var(--smoke);font-family:var(--font-m);margin-top:.3rem;}
+.notif-empty{text-align:center;padding:2.5rem 1rem;color:var(--smoke);font-size:.8rem;}
+
 /* ADMIN MEMBERS */
 .member-list{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.35rem;}
 .member-chip{display:inline-flex;align-items:center;gap:.3rem;font-size:.62rem;padding:2px 8px;border-radius:20px;background:var(--ash2);border:1px solid var(--dust);color:var(--mist);font-family:var(--font-m);}
@@ -429,6 +467,17 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
     </div>
   </aside>
 
+  <!-- NOTIFICATION PANEL (overlay, inside app) -->
+  <div class="notif-panel" id="notif-panel">
+    <div class="notif-panel-head">
+      <span class="notif-panel-title">Notifications</span>
+      <span class="notif-read-all" onclick="markAllNotifRead()">Mark all read</span>
+    </div>
+    <div class="notif-list" id="notif-list">
+      <div class="notif-empty">No notifications yet</div>
+    </div>
+  </div>
+
   <!-- MAIN -->
   <div class="main">
     <div class="topbar">
@@ -440,6 +489,10 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
         <div class="ai-usage" id="ai-usage-display" style="display:none;"></div>
         <button class="btn btn-sm" onclick="exportCSV()">Export CSV</button>
         <a href="youtube_analyzer.html" class="btn btn-sm btn-ghost">← Legacy</a>
+        <div class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()" style="display:none;" title="Notifications">
+          <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="notif-badge" id="notif-badge"></span>
+        </div>
       </div>
     </div>
     <div class="content">
@@ -531,77 +584,115 @@ Your daily message limit is shown in the top bar.</div>
 
       <!-- TRACKER (admin-only) -->
       <div class="pane" id="pane-tracker">
-        <!-- Channel Watchlist -->
-        <div class="card-title" style="margin-bottom:.75rem;">Channel Watchlist</div>
-        <div style="margin-bottom:.5rem;display:flex;gap:.5rem;justify-content:flex-end;">
-          <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run monitor now</button>
-          <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats now</button>
-        </div>
-        <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
-        <div class="flex" style="gap:.5rem;align-items:flex-end;">
-          <div class="field" style="margin:0;flex:1;">
-            <label>Channel ID</label>
-            <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
-          </div>
-          <div class="field" style="margin:0;flex:1;">
-            <label>Channel name</label>
-            <input type="text" id="new-ch-name" placeholder="Sbeev"/>
-          </div>
-          <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add</button>
-        </div>
-        <p style="font-size:.68rem;color:var(--smoke);margin-top:.5rem;">Find a channel ID: open the channel on YouTube → view page source → search for "channelId". Or use <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this tool</a>.</p>
 
-        <!-- Auto-Harvest Config -->
-        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
-          <div class="flex-between" style="margin-bottom:1rem;">
-            <div class="card-title" style="margin-bottom:0;">
-              Auto-Harvest
-              <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">runs daily · 02:00 UTC</span>
+        <!-- ── Channel Watchlist ── -->
+        <div class="tracker-section">
+          <div class="tracker-section-head">
+            <div>
+              <div class="tracker-section-title">Channel Watchlist</div>
+              <div class="tracker-section-sub">Checks for new uploads twice daily · 06:00 &amp; 18:00 UTC</div>
             </div>
-            <div class="flex" style="gap:.5rem;align-items:center;">
-              <label class="flex" style="gap:.4rem;align-items:center;cursor:pointer;font-size:.8rem;color:var(--smoke);">
-                <input type="checkbox" id="harvest-enabled" onchange="saveHarvestConfig()" style="cursor:pointer;"/>
-                Enabled
+            <div class="flex" style="gap:.5rem;">
+              <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run now</button>
+              <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats</button>
+            </div>
+          </div>
+          <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
+          <div class="flex" style="gap:.5rem;align-items:flex-end;">
+            <div class="field" style="margin:0;flex:1;">
+              <label>Channel ID</label>
+              <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
+            </div>
+            <div class="field" style="margin:0;flex:1;">
+              <label>Channel name</label>
+              <input type="text" id="new-ch-name" placeholder="Sbeev"/>
+            </div>
+            <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add channel</button>
+          </div>
+          <p style="font-size:.68rem;color:var(--smoke);margin-top:.6rem;line-height:1.5;">Find a channel ID by opening the channel on YouTube → view page source → search for <code style="font-family:var(--font-m);background:var(--ash3);padding:1px 4px;border-radius:3px;">"channelId"</code>. Or use <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this tool</a>.</p>
+        </div>
+
+        <!-- ── Auto-Harvest ── -->
+        <div class="tracker-section">
+          <div class="tracker-section-head">
+            <div>
+              <div class="tracker-section-title">Auto-Harvest</div>
+              <div class="tracker-section-sub">Pulls videos from watchlist channels daily · 02:00 UTC</div>
+            </div>
+            <div class="flex" style="gap:.75rem;align-items:center;">
+              <span id="harvest-save-status" style="font-size:.72rem;color:var(--smoke);"></span>
+              <label class="toggle-switch">
+                <input type="checkbox" id="harvest-enabled" onchange="saveHarvestConfig()"/>
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
               </label>
               <button class="btn btn-sm btn-ghost" onclick="runCronNow('harvest')" id="btn-run-harvest">▶ Run now</button>
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem 1rem;margin-bottom:.75rem;">
-            <div class="field" style="margin:0;">
-              <label style="font-size:.72rem;">Videos per channel</label>
-              <input type="number" id="harvest-vids" min="1" max="50" placeholder="5" onchange="saveHarvestConfig()" style="width:100%;"/>
+
+          <div style="display:grid;grid-template-columns:repeat(4,1fr) auto;gap:.75rem 1rem;align-items:end;margin-top:.25rem;">
+            <div>
+              <div class="harvest-label">Videos per channel</div>
+              <div class="harvest-hint">Max fetched each run</div>
+              <input type="number" id="harvest-vids" min="1" max="50" placeholder="5" onchange="saveHarvestConfig()" class="harvest-input"/>
             </div>
-            <div class="field" style="margin:0;">
-              <label style="font-size:.72rem;">Max age (days)</label>
-              <input type="number" id="harvest-age" min="1" max="365" placeholder="30" onchange="saveHarvestConfig()" style="width:100%;"/>
+            <div>
+              <div class="harvest-label">Max age</div>
+              <div class="harvest-hint">Skip older than N days</div>
+              <input type="number" id="harvest-age" min="1" max="365" placeholder="30" onchange="saveHarvestConfig()" class="harvest-input"/>
             </div>
-            <div class="field" style="margin:0;">
-              <label style="font-size:.72rem;">Min views</label>
-              <input type="number" id="harvest-views" min="0" placeholder="0" onchange="saveHarvestConfig()" style="width:100%;"/>
+            <div>
+              <div class="harvest-label">Views / sub ratio ≥</div>
+              <div class="harvest-hint">e.g. 0.5 = 50% of subs viewed</div>
+              <input type="number" id="harvest-views" min="0" step="0.01" placeholder="0" onchange="saveHarvestConfig()" class="harvest-input"/>
             </div>
-            <div class="field" style="margin:0;">
-              <label style="font-size:.72rem;">Min channel subs</label>
-              <input type="number" id="harvest-subs" min="0" placeholder="0" onchange="saveHarvestConfig()" style="width:100%;"/>
+            <div>
+              <div class="harvest-label">Min channel subs</div>
+              <div class="harvest-hint">Skip tiny channels</div>
+              <input type="number" id="harvest-subs" min="0" placeholder="0" onchange="saveHarvestConfig()" class="harvest-input"/>
             </div>
-            <div class="field" style="margin:0;display:flex;align-items:center;gap:.4rem;padding-top:1.2rem;">
-              <input type="checkbox" id="harvest-transcript" onchange="saveHarvestConfig()" style="cursor:pointer;"/>
-              <label for="harvest-transcript" style="font-size:.78rem;cursor:pointer;margin:0;">Require transcript</label>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:.3rem;padding-bottom:2px;">
+              <div class="harvest-label" style="text-align:center;">Transcript</div>
+              <div class="harvest-hint" style="text-align:center;">Required</div>
+              <label class="toggle-switch" style="margin-top:4px;">
+                <input type="checkbox" id="harvest-transcript" onchange="saveHarvestConfig()"/>
+                <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              </label>
             </div>
           </div>
-          <div id="harvest-save-status" style="font-size:.72rem;color:var(--smoke);min-height:1rem;"></div>
         </div>
 
-        <!-- Velocity Schedule -->
-        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
-          <div class="flex-between" style="margin-bottom:.75rem;">
-            <div class="card-title" style="margin-bottom:0;">
-              Pending Velocity Snapshots
-              <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">checked every 5 min</span>
+        <!-- ── Automation Jobs ── -->
+        <div class="tracker-section">
+          <div class="tracker-section-head">
+            <div>
+              <div class="tracker-section-title">Automation</div>
+              <div class="tracker-section-sub">Manual triggers for all background jobs — runs fire silently in the background</div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;">
+            <button class="btn btn-sm btn-ghost" onclick="runCronNow('autotag')" id="btn-run-autotag">🏆 Auto-tag</button>
+            <button class="btn btn-sm btn-ghost" onclick="runCronNow('competitor')" id="btn-run-competitor">⚡ Competitor alert</button>
+            <button class="btn btn-sm btn-ghost" onclick="runCronNow('pruning')" id="btn-run-pruning">🗑️ Dead video pruning</button>
+            <button class="btn btn-sm btn-ghost" onclick="runCronNow('trends')" id="btn-run-trends">📈 Trend detection</button>
+            <button class="btn btn-sm btn-ghost" onclick="runCronNow('weekly')" id="btn-run-weekly">📊 Weekly summary</button>
+          </div>
+          <p style="font-size:.68rem;color:var(--smoke);margin-top:.75rem;line-height:1.6;">
+            Auto-tag, competitor alerts, and pruning run daily. Trend detection and weekly summary run every Sunday. Results appear in the 🔔 notification panel.
+          </p>
+        </div>
+
+        <!-- ── Velocity Snapshots ── -->
+        <div class="tracker-section" style="border-bottom:none;">
+          <div class="tracker-section-head">
+            <div>
+              <div class="tracker-section-title">Velocity Snapshots</div>
+              <div class="tracker-section-sub">Pending checks · polled every 5 min</div>
             </div>
             <button class="btn btn-sm btn-ghost" onclick="loadVelocitySchedule()">↻ Refresh</button>
           </div>
-          <div id="velocity-schedule-list"><div style="font-size:.8rem;color:var(--smoke);">Loading…</div></div>
+          <div id="velocity-schedule-list" style="margin-top:.25rem;"><div style="font-size:.8rem;color:var(--smoke);">Loading…</div></div>
         </div>
+
       </div>
 
       <!-- ADMIN -->
@@ -793,6 +884,10 @@ function startApp() {
     document.getElementById('nav-tracker').style.display = 'flex';
     document.getElementById('nav-admin').style.display = 'flex';
     document.getElementById('ws-add-btn').style.display = 'flex';
+    document.getElementById('notif-bell').style.display = 'flex';
+    loadNotifications();
+    // Poll notifications every 5 minutes
+    setInterval(loadNotifications, 5 * 60 * 1000);
   }
   if (u.role === 'editor') document.getElementById('ws-add-btn').style.display = 'flex';
   // Load YT key
@@ -2430,18 +2525,27 @@ async function removeChannel(channelId,name){
 }
 
 async function runCronNow(type){
-  const btnId = type==='monitor' ? 'btn-run-monitor' : type==='harvest' ? 'btn-run-harvest' : 'btn-run-refresh';
+  const btnMap={
+    monitor:'btn-run-monitor', harvest:'btn-run-harvest', refresh:'btn-run-refresh',
+    autotag:'btn-run-autotag', competitor:'btn-run-competitor', pruning:'btn-run-pruning',
+    trends:'btn-run-trends', weekly:'btn-run-weekly',
+  };
+  const btnId = btnMap[type] || ('btn-run-'+type);
   const btn=document.getElementById(btnId);
-  const orig=btn.textContent;
-  btn.disabled=true;btn.textContent='Running...';
+  const orig=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Starting…';}
   try{
     await api('POST','/admin/cron/'+type);
-    btn.textContent='Started ✓';
-    setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},3000);
+    if(btn){btn.textContent='Started ✓';}
+    setTimeout(()=>{if(btn){btn.textContent=orig;btn.disabled=false;}},3000);
     if(type==='monitor')setTimeout(loadAdminChannels,5000);
+    // Refresh notifications after automation jobs
+    if(['autotag','competitor','pruning','trends','weekly'].includes(type)){
+      setTimeout(loadNotifications,8000);
+    }
   }catch(e){
     alert('Error: '+e.message);
-    btn.textContent=orig;btn.disabled=false;
+    if(btn){btn.textContent=orig;btn.disabled=false;}
   }
 }
 
@@ -2455,7 +2559,7 @@ async function saveHarvestConfig(){
         enabled:      document.getElementById('harvest-enabled').checked,
         videos_per_channel: parseInt(document.getElementById('harvest-vids').value)||5,
         max_age_days: parseInt(document.getElementById('harvest-age').value)||30,
-        min_views:    parseInt(document.getElementById('harvest-views').value)||0,
+        min_views:    parseFloat(document.getElementById('harvest-views').value)||0,
         min_channel_subs: parseInt(document.getElementById('harvest-subs').value)||0,
         require_transcript: document.getElementById('harvest-transcript').checked,
       };
@@ -2478,6 +2582,94 @@ async function loadHarvestConfig(){
     document.getElementById('harvest-subs').value             = cfg.min_channel_subs??0;
     document.getElementById('harvest-transcript').checked     = !!cfg.require_transcript;
   }catch(e){console.warn('[harvest cfg]',e.message);}
+}
+
+// ── Notifications ─────────────────────────────────────────────
+
+const NOTIF_TYPE_ICONS = {
+  velocity_spike:  '🚀',
+  auto_tag:        '🏆',
+  competitor_alert:'⚡',
+  trend:           '📈',
+  dead_pruned:     '🗑️',
+  weekly_summary:  '📊',
+};
+
+let notifPanelOpen = false;
+
+async function loadNotifications(){
+  try{
+    const data = await api('GET','/notifications');
+    const badge = document.getElementById('notif-badge');
+    const list  = document.getElementById('notif-list');
+    if(!data.rows||!data.rows.length){
+      list.innerHTML='<div class="notif-empty">No notifications yet</div>';
+      badge.style.display='none';
+      return;
+    }
+    if(data.unread>0){
+      badge.style.display='flex';
+      badge.textContent = data.unread > 9 ? '9+' : data.unread;
+    } else {
+      badge.style.display='none';
+    }
+    list.innerHTML = data.rows.map(n => `
+      <div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead(${n.id},this)">
+        <div class="notif-icon">${NOTIF_TYPE_ICONS[n.type]||'🔔'}</div>
+        <div class="notif-body">
+          <div class="notif-title-text">${escHtml(n.title)}</div>
+          <div class="notif-body-text">${escHtml(n.body)}</div>
+          <div class="notif-time">${timeAgo(n.created_at)}</div>
+        </div>
+      </div>
+    `).join('');
+  }catch(e){console.warn('[notif]',e.message);}
+}
+
+async function markNotifRead(id, el){
+  if(el && el.classList.contains('unread')){
+    el.classList.remove('unread');
+    try{
+      await api('PATCH','/notifications/'+id+'/read');
+      loadNotifications();
+    }catch(e){}
+  }
+}
+
+async function markAllNotifRead(){
+  try{
+    await api('POST','/notifications/read-all');
+    document.getElementById('notif-panel').classList.remove('open');
+    notifPanelOpen=false;
+    loadNotifications();
+  }catch(e){}
+}
+
+function toggleNotifPanel(){
+  const panel=document.getElementById('notif-panel');
+  notifPanelOpen=!notifPanelOpen;
+  panel.classList.toggle('open',notifPanelOpen);
+  if(notifPanelOpen) loadNotifications();
+}
+
+document.addEventListener('click', e=>{
+  if(notifPanelOpen && !e.target.closest('#notif-panel') && !e.target.closest('#notif-bell')){
+    document.getElementById('notif-panel').classList.remove('open');
+    notifPanelOpen=false;
+  }
+});
+
+function timeAgo(iso){
+  const ms=Date.now()-new Date(iso).getTime();
+  const m=Math.floor(ms/60000),h=Math.floor(m/60),d=Math.floor(h/24);
+  if(d>0) return d+'d ago';
+  if(h>0) return h+'h ago';
+  if(m>0) return m+'m ago';
+  return 'just now';
+}
+
+function escHtml(s){
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ── Player overlay state ──────────────────────────────────────
