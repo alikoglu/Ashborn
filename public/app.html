@@ -409,6 +409,9 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
       <div class="nav-item" onclick="goTo('ai')" id="nav-ai">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AI Assistant
       </div>
+      <div class="nav-item" onclick="goTo('tracker')" id="nav-tracker" style="display:none;">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Tracker
+      </div>
       <div class="nav-item" onclick="goTo('admin')" id="nav-admin" style="display:none;">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Admin
       </div>
@@ -526,6 +529,81 @@ Your daily message limit is shown in the top bar.</div>
         </div>
       </div>
 
+      <!-- TRACKER (admin-only) -->
+      <div class="pane" id="pane-tracker">
+        <!-- Channel Watchlist -->
+        <div class="card-title" style="margin-bottom:.75rem;">Channel Watchlist</div>
+        <div style="margin-bottom:.5rem;display:flex;gap:.5rem;justify-content:flex-end;">
+          <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run monitor now</button>
+          <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats now</button>
+        </div>
+        <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
+        <div class="flex" style="gap:.5rem;align-items:flex-end;">
+          <div class="field" style="margin:0;flex:1;">
+            <label>Channel ID</label>
+            <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
+          </div>
+          <div class="field" style="margin:0;flex:1;">
+            <label>Channel name</label>
+            <input type="text" id="new-ch-name" placeholder="Sbeev"/>
+          </div>
+          <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add</button>
+        </div>
+        <p style="font-size:.68rem;color:var(--smoke);margin-top:.5rem;">Find a channel ID: open the channel on YouTube → view page source → search for "channelId". Or use <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this tool</a>.</p>
+
+        <!-- Auto-Harvest Config -->
+        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
+          <div class="flex-between" style="margin-bottom:1rem;">
+            <div class="card-title" style="margin-bottom:0;">
+              Auto-Harvest
+              <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">runs daily · 02:00 UTC</span>
+            </div>
+            <div class="flex" style="gap:.5rem;align-items:center;">
+              <label class="flex" style="gap:.4rem;align-items:center;cursor:pointer;font-size:.8rem;color:var(--smoke);">
+                <input type="checkbox" id="harvest-enabled" onchange="saveHarvestConfig()" style="cursor:pointer;"/>
+                Enabled
+              </label>
+              <button class="btn btn-sm btn-ghost" onclick="runCronNow('harvest')" id="btn-run-harvest">▶ Run now</button>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem 1rem;margin-bottom:.75rem;">
+            <div class="field" style="margin:0;">
+              <label style="font-size:.72rem;">Videos per channel</label>
+              <input type="number" id="harvest-vids" min="1" max="50" placeholder="5" onchange="saveHarvestConfig()" style="width:100%;"/>
+            </div>
+            <div class="field" style="margin:0;">
+              <label style="font-size:.72rem;">Max age (days)</label>
+              <input type="number" id="harvest-age" min="1" max="365" placeholder="30" onchange="saveHarvestConfig()" style="width:100%;"/>
+            </div>
+            <div class="field" style="margin:0;">
+              <label style="font-size:.72rem;">Min views</label>
+              <input type="number" id="harvest-views" min="0" placeholder="0" onchange="saveHarvestConfig()" style="width:100%;"/>
+            </div>
+            <div class="field" style="margin:0;">
+              <label style="font-size:.72rem;">Min channel subs</label>
+              <input type="number" id="harvest-subs" min="0" placeholder="0" onchange="saveHarvestConfig()" style="width:100%;"/>
+            </div>
+            <div class="field" style="margin:0;display:flex;align-items:center;gap:.4rem;padding-top:1.2rem;">
+              <input type="checkbox" id="harvest-transcript" onchange="saveHarvestConfig()" style="cursor:pointer;"/>
+              <label for="harvest-transcript" style="font-size:.78rem;cursor:pointer;margin:0;">Require transcript</label>
+            </div>
+          </div>
+          <div id="harvest-save-status" style="font-size:.72rem;color:var(--smoke);min-height:1rem;"></div>
+        </div>
+
+        <!-- Velocity Schedule -->
+        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
+          <div class="flex-between" style="margin-bottom:.75rem;">
+            <div class="card-title" style="margin-bottom:0;">
+              Pending Velocity Snapshots
+              <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">checked every 5 min</span>
+            </div>
+            <button class="btn btn-sm btn-ghost" onclick="loadVelocitySchedule()">↻ Refresh</button>
+          </div>
+          <div id="velocity-schedule-list"><div style="font-size:.8rem;color:var(--smoke);">Loading…</div></div>
+        </div>
+      </div>
+
       <!-- ADMIN -->
       <div class="pane" id="pane-admin">
         <div class="admin-grid">
@@ -540,29 +618,6 @@ Your daily message limit is shown in the top bar.</div>
             <div class="card-title" style="margin-bottom:.75rem;">All Workspaces</div>
             <div id="admin-ws-list"></div>
           </div>
-        </div>
-        <!-- Channel Monitor -->
-        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
-          <div class="flex-between" style="margin-bottom:.75rem;">
-            <div class="card-title" style="margin-bottom:0;">Channel Monitor <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">checks twice daily · 06:00 &amp; 18:00 UTC</span></div>
-            <div class="flex">
-              <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run now</button>
-              <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats now</button>
-            </div>
-          </div>
-          <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
-          <div class="flex" style="gap:.5rem;align-items:flex-end;">
-            <div class="field" style="margin:0;flex:1;">
-              <label>Channel ID</label>
-              <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
-            </div>
-            <div class="field" style="margin:0;flex:1;">
-              <label>Channel name</label>
-              <input type="text" id="new-ch-name" placeholder="Sbeev"/>
-            </div>
-            <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add</button>
-          </div>
-          <p style="font-size:.68rem;color:var(--smoke);margin-top:.5rem;">Find a channel ID: open the channel on YouTube → view page source → search for "channelId". Or use a tool like <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this one</a>.</p>
         </div>
       </div>
 
@@ -733,8 +788,9 @@ function startApp() {
   document.getElementById('user-avatar').textContent = u.username[0].toUpperCase();
   document.getElementById('user-name').textContent = u.username;
   document.getElementById('user-role').textContent = u.role;
-  // Show admin nav if admin
+  // Show admin-only nav items
   if (u.role === 'admin') {
+    document.getElementById('nav-tracker').style.display = 'flex';
     document.getElementById('nav-admin').style.display = 'flex';
     document.getElementById('ws-add-btn').style.display = 'flex';
   }
@@ -844,7 +900,7 @@ function toggleWsChip(el, id) {
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────
-const PAGES = {analyze:'Single Video',batch:'Batch Analyze',database:'Database',overview:'Insights',ai:'AI Assistant',admin:'Admin'};
+const PAGES = {analyze:'Single Video',batch:'Batch Analyze',database:'Database',overview:'Insights',ai:'AI Assistant',tracker:'Tracker',admin:'Admin'};
 function goTo(page) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById('nav-'+page);
@@ -856,6 +912,7 @@ function goTo(page) {
   if (page==='database') loadWorkspaceVideos().then(()=>renderDB());
   if (page==='overview') loadWorkspaceVideos().then(()=>renderOverview());
   if (page==='ai') renderChips();
+  if (page==='tracker') loadTracker();
   if (page==='admin') loadAdmin();
 }
 
@@ -2081,10 +2138,51 @@ function appendMsg(text,role,temp=false){
   wrap.appendChild(el);wrap.scrollTop=wrap.scrollHeight;return el;
 }
 
+// ─── TRACKER ─────────────────────────────────────────────────
+async function loadTracker(){
+  if(SESSION?.user?.role!=='admin')return;
+  loadAdminChannels();
+  loadHarvestConfig();
+  loadVelocitySchedule();
+}
+
+async function loadVelocitySchedule(){
+  const el=document.getElementById('velocity-schedule-list');
+  if(!el)return;
+  try{
+    const data=await api('GET','/admin/velocity-schedule');
+    const rows=data.rows||[];
+    if(!rows.length){
+      el.innerHTML='<div style="font-size:.8rem;color:var(--smoke);">No pending snapshots.</div>';
+      return;
+    }
+    el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:.76rem;">
+      <thead><tr style="color:var(--smoke);text-align:left;">
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Video ID</th>
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Snapshot</th>
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Fire at (UTC)</th>
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Status</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+        <td style="padding:5px 8px;font-family:var(--font-m);color:var(--mist);">${esc(r.video_id)}</td>
+        <td style="padding:5px 8px;color:var(--white);">${esc(r.snapshot_type)}</td>
+        <td style="padding:5px 8px;color:var(--smoke);">${new Date(r.fire_at).toLocaleString('en-GB',{timeZone:'UTC',hour12:false})}</td>
+        <td style="padding:5px 8px;">${r.done
+          ?'<span style="color:#4ade80;font-size:.7rem;">✓ done</span>'
+          :new Date(r.fire_at)<=new Date()
+            ?'<span style="color:var(--ember);font-size:.7rem;">⏳ due</span>'
+            :'<span style="color:var(--smoke);font-size:.7rem;">pending</span>'
+        }</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    el.innerHTML='<div style="font-size:.8rem;color:var(--smoke);">Failed to load: '+esc(e.message)+'</div>';
+  }
+}
+
 // ─── ADMIN ────────────────────────────────────────────────────
 async function loadAdmin(){
   if(SESSION?.user?.role!=='admin')return;
-  loadAdminChannels();
   try{
     const data=await api('GET','/admin/users');
     adminUsers=data.users||[];
@@ -2332,11 +2430,12 @@ async function removeChannel(channelId,name){
 }
 
 async function runCronNow(type){
-  const btn=document.getElementById(type==='monitor'?'btn-run-monitor':'btn-run-refresh');
+  const btnId = type==='monitor' ? 'btn-run-monitor' : type==='harvest' ? 'btn-run-harvest' : 'btn-run-refresh';
+  const btn=document.getElementById(btnId);
   const orig=btn.textContent;
   btn.disabled=true;btn.textContent='Running...';
   try{
-    const r=await api('POST','/admin/cron/'+type);
+    await api('POST','/admin/cron/'+type);
     btn.textContent='Started ✓';
     setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},3000);
     if(type==='monitor')setTimeout(loadAdminChannels,5000);
@@ -2344,6 +2443,41 @@ async function runCronNow(type){
     alert('Error: '+e.message);
     btn.textContent=orig;btn.disabled=false;
   }
+}
+
+let harvestSaveTimer=null;
+async function saveHarvestConfig(){
+  clearTimeout(harvestSaveTimer);
+  harvestSaveTimer=setTimeout(async()=>{
+    const status=document.getElementById('harvest-save-status');
+    try{
+      const payload={
+        enabled:      document.getElementById('harvest-enabled').checked,
+        videos_per_channel: parseInt(document.getElementById('harvest-vids').value)||5,
+        max_age_days: parseInt(document.getElementById('harvest-age').value)||30,
+        min_views:    parseInt(document.getElementById('harvest-views').value)||0,
+        min_channel_subs: parseInt(document.getElementById('harvest-subs').value)||0,
+        require_transcript: document.getElementById('harvest-transcript').checked,
+      };
+      await api('PATCH','/admin/harvest-config',payload);
+      status.textContent='Saved ✓';
+      setTimeout(()=>status.textContent='',2000);
+    }catch(e){
+      status.textContent='Error: '+e.message;
+    }
+  },600);
+}
+
+async function loadHarvestConfig(){
+  try{
+    const cfg=await api('GET','/admin/harvest-config');
+    document.getElementById('harvest-enabled').checked        = !!cfg.enabled;
+    document.getElementById('harvest-vids').value             = cfg.videos_per_channel??5;
+    document.getElementById('harvest-age').value              = cfg.max_age_days??30;
+    document.getElementById('harvest-views').value            = cfg.min_views??0;
+    document.getElementById('harvest-subs').value             = cfg.min_channel_subs??0;
+    document.getElementById('harvest-transcript').checked     = !!cfg.require_transcript;
+  }catch(e){console.warn('[harvest cfg]',e.message);}
 }
 
 // ── Player overlay state ──────────────────────────────────────
