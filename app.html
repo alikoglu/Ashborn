@@ -409,6 +409,9 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
       <div class="nav-item" onclick="goTo('ai')" id="nav-ai">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AI Assistant
       </div>
+      <div class="nav-item" onclick="goTo('tracker')" id="nav-tracker" style="display:none;">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Tracker
+      </div>
       <div class="nav-item" onclick="goTo('admin')" id="nav-admin" style="display:none;">
         <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Admin
       </div>
@@ -526,44 +529,27 @@ Your daily message limit is shown in the top bar.</div>
         </div>
       </div>
 
-      <!-- ADMIN -->
-      <div class="pane" id="pane-admin">
-        <div class="admin-grid">
-          <!-- Users -->
-          <div>
-            <div class="card-title" style="margin-bottom:.75rem;">Users</div>
-            <div id="admin-user-list"></div>
-            <button class="btn btn-sm btn-primary mt1" onclick="openCreateUser()">+ Add User</button>
-          </div>
-          <!-- Workspaces -->
-          <div>
-            <div class="card-title" style="margin-bottom:.75rem;">All Workspaces</div>
-            <div id="admin-ws-list"></div>
-          </div>
+      <!-- TRACKER (admin-only) -->
+      <div class="pane" id="pane-tracker">
+        <!-- Channel Watchlist -->
+        <div class="card-title" style="margin-bottom:.75rem;">Channel Watchlist</div>
+        <div style="margin-bottom:.5rem;display:flex;gap:.5rem;justify-content:flex-end;">
+          <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run monitor now</button>
+          <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats now</button>
         </div>
-        <!-- Channel Monitor -->
-        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
-          <div class="flex-between" style="margin-bottom:.75rem;">
-            <div class="card-title" style="margin-bottom:0;">Channel Monitor <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">checks twice daily · 06:00 &amp; 18:00 UTC</span></div>
-            <div class="flex">
-              <button class="btn btn-sm btn-ghost" onclick="runCronNow('monitor')" id="btn-run-monitor">▶ Run now</button>
-              <button class="btn btn-sm btn-ghost" onclick="runCronNow('refresh')" id="btn-run-refresh">↻ Refresh stats now</button>
-            </div>
+        <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
+        <div class="flex" style="gap:.5rem;align-items:flex-end;">
+          <div class="field" style="margin:0;flex:1;">
+            <label>Channel ID</label>
+            <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
           </div>
-          <div id="admin-channel-list" style="margin-bottom:.75rem;"></div>
-          <div class="flex" style="gap:.5rem;align-items:flex-end;">
-            <div class="field" style="margin:0;flex:1;">
-              <label>Channel ID</label>
-              <input type="text" id="new-ch-id" placeholder="UCxxxxxxxxxxxxxxxxxxxxxx"/>
-            </div>
-            <div class="field" style="margin:0;flex:1;">
-              <label>Channel name</label>
-              <input type="text" id="new-ch-name" placeholder="Sbeev"/>
-            </div>
-            <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add</button>
+          <div class="field" style="margin:0;flex:1;">
+            <label>Channel name</label>
+            <input type="text" id="new-ch-name" placeholder="Sbeev"/>
           </div>
-          <p style="font-size:.68rem;color:var(--smoke);margin-top:.5rem;">Find a channel ID: open the channel on YouTube → view page source → search for "channelId". Or use a tool like <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this one</a>.</p>
+          <button class="btn btn-sm btn-primary" style="margin-bottom:1px;" onclick="addChannel()">+ Add</button>
         </div>
+        <p style="font-size:.68rem;color:var(--smoke);margin-top:.5rem;">Find a channel ID: open the channel on YouTube → view page source → search for "channelId". Or use <a href="https://www.streamweasels.com/tools/youtube-channel-id-and-user-id-convertor/" target="_blank" style="color:var(--blue);">this tool</a>.</p>
 
         <!-- Auto-Harvest Config -->
         <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
@@ -580,7 +566,6 @@ Your daily message limit is shown in the top bar.</div>
               <button class="btn btn-sm btn-ghost" onclick="runCronNow('harvest')" id="btn-run-harvest">▶ Run now</button>
             </div>
           </div>
-
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem 1rem;margin-bottom:.75rem;">
             <div class="field" style="margin:0;">
               <label style="font-size:.72rem;">Videos per channel</label>
@@ -604,6 +589,35 @@ Your daily message limit is shown in the top bar.</div>
             </div>
           </div>
           <div id="harvest-save-status" style="font-size:.72rem;color:var(--smoke);min-height:1rem;"></div>
+        </div>
+
+        <!-- Velocity Schedule -->
+        <div style="margin-top:2rem;border-top:1px solid var(--dust);padding-top:1.5rem;">
+          <div class="flex-between" style="margin-bottom:.75rem;">
+            <div class="card-title" style="margin-bottom:0;">
+              Pending Velocity Snapshots
+              <span style="font-size:.65rem;color:var(--smoke);font-family:var(--font-m);margin-left:.5rem;">checked every 5 min</span>
+            </div>
+            <button class="btn btn-sm btn-ghost" onclick="loadVelocitySchedule()">↻ Refresh</button>
+          </div>
+          <div id="velocity-schedule-list"><div style="font-size:.8rem;color:var(--smoke);">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- ADMIN -->
+      <div class="pane" id="pane-admin">
+        <div class="admin-grid">
+          <!-- Users -->
+          <div>
+            <div class="card-title" style="margin-bottom:.75rem;">Users</div>
+            <div id="admin-user-list"></div>
+            <button class="btn btn-sm btn-primary mt1" onclick="openCreateUser()">+ Add User</button>
+          </div>
+          <!-- Workspaces -->
+          <div>
+            <div class="card-title" style="margin-bottom:.75rem;">All Workspaces</div>
+            <div id="admin-ws-list"></div>
+          </div>
         </div>
       </div>
 
@@ -774,8 +788,9 @@ function startApp() {
   document.getElementById('user-avatar').textContent = u.username[0].toUpperCase();
   document.getElementById('user-name').textContent = u.username;
   document.getElementById('user-role').textContent = u.role;
-  // Show admin nav if admin
+  // Show admin-only nav items
   if (u.role === 'admin') {
+    document.getElementById('nav-tracker').style.display = 'flex';
     document.getElementById('nav-admin').style.display = 'flex';
     document.getElementById('ws-add-btn').style.display = 'flex';
   }
@@ -885,7 +900,7 @@ function toggleWsChip(el, id) {
 }
 
 // ─── NAVIGATION ──────────────────────────────────────────────
-const PAGES = {analyze:'Single Video',batch:'Batch Analyze',database:'Database',overview:'Insights',ai:'AI Assistant',admin:'Admin'};
+const PAGES = {analyze:'Single Video',batch:'Batch Analyze',database:'Database',overview:'Insights',ai:'AI Assistant',tracker:'Tracker',admin:'Admin'};
 function goTo(page) {
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
   const navEl = document.getElementById('nav-'+page);
@@ -897,6 +912,7 @@ function goTo(page) {
   if (page==='database') loadWorkspaceVideos().then(()=>renderDB());
   if (page==='overview') loadWorkspaceVideos().then(()=>renderOverview());
   if (page==='ai') renderChips();
+  if (page==='tracker') loadTracker();
   if (page==='admin') loadAdmin();
 }
 
@@ -2122,11 +2138,51 @@ function appendMsg(text,role,temp=false){
   wrap.appendChild(el);wrap.scrollTop=wrap.scrollHeight;return el;
 }
 
-// ─── ADMIN ────────────────────────────────────────────────────
-async function loadAdmin(){
+// ─── TRACKER ─────────────────────────────────────────────────
+async function loadTracker(){
   if(SESSION?.user?.role!=='admin')return;
   loadAdminChannels();
   loadHarvestConfig();
+  loadVelocitySchedule();
+}
+
+async function loadVelocitySchedule(){
+  const el=document.getElementById('velocity-schedule-list');
+  if(!el)return;
+  try{
+    const data=await api('GET','/admin/velocity-schedule');
+    const rows=data.rows||[];
+    if(!rows.length){
+      el.innerHTML='<div style="font-size:.8rem;color:var(--smoke);">No pending snapshots.</div>';
+      return;
+    }
+    el.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:.76rem;">
+      <thead><tr style="color:var(--smoke);text-align:left;">
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Video ID</th>
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Snapshot</th>
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Fire at (UTC)</th>
+        <th style="padding:5px 8px;border-bottom:1px solid var(--dust);">Status</th>
+      </tr></thead>
+      <tbody>${rows.map(r=>`<tr style="border-bottom:1px solid rgba(255,255,255,.04);">
+        <td style="padding:5px 8px;font-family:var(--font-m);color:var(--mist);">${esc(r.video_id)}</td>
+        <td style="padding:5px 8px;color:var(--white);">${esc(r.snapshot_type)}</td>
+        <td style="padding:5px 8px;color:var(--smoke);">${new Date(r.fire_at).toLocaleString('en-GB',{timeZone:'UTC',hour12:false})}</td>
+        <td style="padding:5px 8px;">${r.done
+          ?'<span style="color:#4ade80;font-size:.7rem;">✓ done</span>'
+          :new Date(r.fire_at)<=new Date()
+            ?'<span style="color:var(--ember);font-size:.7rem;">⏳ due</span>'
+            :'<span style="color:var(--smoke);font-size:.7rem;">pending</span>'
+        }</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  }catch(e){
+    el.innerHTML='<div style="font-size:.8rem;color:var(--smoke);">Failed to load: '+esc(e.message)+'</div>';
+  }
+}
+
+// ─── ADMIN ────────────────────────────────────────────────────
+async function loadAdmin(){
+  if(SESSION?.user?.role!=='admin')return;
   try{
     const data=await api('GET','/admin/users');
     adminUsers=data.users||[];

@@ -629,6 +629,19 @@ app.post('/admin/cron/harvest', async (req, res) => {
   runAutoHarvest().catch(e => console.error('[manual harvest]', e.message));
 });
 
+// ── Velocity schedule ─────────────────────────────────────────
+app.get('/admin/velocity-schedule', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const rows = await q(
+    `SELECT id, video_id, snapshot_type, fire_at, done
+     FROM velocity_schedule
+     ORDER BY done ASC, fire_at ASC
+     LIMIT 200`
+  );
+  res.json({ rows });
+});
+
 // ── Harvest config ────────────────────────────────────────────
 app.get('/admin/harvest-config', async (req, res) => {
   if (!requireAuth(req, res)) return;
