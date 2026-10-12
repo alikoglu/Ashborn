@@ -13,7 +13,7 @@ const crypto = require('crypto');
 const path = require('path');
 const bcrypt = require('bcryptjs');
 const { q, one, migrate, seed } = require('./db');
-const { startCron, runStatsRefresh, runChannelMonitor } = require('./cron');
+const { startCron, runStatsRefresh, runChannelMonitor, runAutoHarvest } = require('./cron');
 
 
 const app = express();
@@ -620,6 +620,51 @@ app.post('/admin/cron/monitor', async (req, res) => {
   if (!requireRole(req, res, 'admin')) return;
   res.json({ success: true, message: 'Channel monitor started in background' });
   runChannelMonitor().catch(e => console.error('[manual monitor]', e.message));
+});
+
+app.post('/admin/cron/harvest', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  res.json({ success: true, message: 'Auto-harvest started in background' });
+  runAutoHarvest().catch(e => console.error('[manual harvest]', e.message));
+});
+
+// ── Harvest config ────────────────────────────────────────────
+app.get('/admin/harvest-config', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const cfg = await q('SELECT * FROM harvest_config WHERE id=1');
+  res.json(cfg[0] || {});
+});
+
+app.patch('/admin/harvest-config', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  if (!requireRole(req, res, 'admin')) return;
+  const {
+    enabled, videos_per_channel, max_age_days,
+    min_views, min_channel_subs, require_transcript,
+  } = req.body || {};
+  await q(
+    `UPDATE harvest_config SET
+       enabled            = COALESCE($1, enabled),
+       videos_per_channel = COALESCE($2, videos_per_channel),
+       max_age_days       = COALESCE($3, max_age_days),
+       min_views          = COALESCE($4, min_views),
+       min_channel_subs   = COALESCE($5, min_channel_subs),
+       require_transcript = COALESCE($6, require_transcript),
+       updated_at         = NOW()
+     WHERE id=1`,
+    [
+      enabled            != null ? (enabled ? 1 : 0)            : null,
+      videos_per_channel != null ? parseInt(videos_per_channel) : null,
+      max_age_days       != null ? parseInt(max_age_days)       : null,
+      min_views          != null ? parseInt(min_views)          : null,
+      min_channel_subs   != null ? parseInt(min_channel_subs)   : null,
+      require_transcript != null ? (require_transcript ? 1 : 0) : null,
+    ]
+  );
+  const updated = await q('SELECT * FROM harvest_config WHERE id=1');
+  res.json(updated[0]);
 });
 
 // ══════════════════════════════════════════════════════════════

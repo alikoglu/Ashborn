@@ -136,12 +136,36 @@ CREATE TABLE IF NOT EXISTS channel_monitor (
 
 CREATE TABLE IF NOT EXISTS video_velocity (
   video_id      TEXT NOT NULL,
-  snapshot_type TEXT NOT NULL,   -- '24h' | '48h' | '7d' | '30d'
+  snapshot_type TEXT NOT NULL,   -- '1h'|'2h'|'3h'|'6h'|'12h'|'24h'|'48h'|'7d'|'30d'
   views         BIGINT DEFAULT 0,
   likes         BIGINT DEFAULT 0,
   comments      BIGINT DEFAULT 0,
   captured_at   TIMESTAMPTZ DEFAULT NOW(),
   PRIMARY KEY (video_id, snapshot_type)
+);
+
+-- Persists velocity snapshot schedule to DB so it survives Railway restarts.
+-- fire_at = UTC timestamp when the snapshot should be captured.
+-- done = 1 once captured.
+CREATE TABLE IF NOT EXISTS velocity_schedule (
+  id          SERIAL PRIMARY KEY,
+  video_id    TEXT NOT NULL,
+  snapshot_type TEXT NOT NULL,
+  fire_at     TIMESTAMPTZ NOT NULL,
+  done        INTEGER DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Harvest config — one row, updated in-place by admin
+CREATE TABLE IF NOT EXISTS harvest_config (
+  id                  INTEGER PRIMARY KEY DEFAULT 1,
+  enabled             INTEGER DEFAULT 1,
+  videos_per_channel  INTEGER DEFAULT 5,   -- max videos to harvest per channel per run
+  max_age_days        INTEGER DEFAULT 30,  -- skip videos older than this
+  min_views           INTEGER DEFAULT 0,   -- skip videos below this view count
+  min_channel_subs    INTEGER DEFAULT 0,   -- skip channels below this sub count
+  require_transcript  INTEGER DEFAULT 0,   -- only harvest if transcript is available
+  updated_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS video_annotations (
@@ -227,4 +251,11 @@ DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='video_captions' AND column_name='pos_y') THEN
     ALTER TABLE video_captions DROP COLUMN pos_y;
   END IF;
+  -- velocity_schedule: add if table was created before this column existed
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='velocity_schedule' AND column_name='done') THEN
+    -- table doesn't exist yet — created above via CREATE TABLE IF NOT EXISTS
+    NULL;
+  END IF;
+  -- harvest_config: seed default row if missing
+  INSERT INTO harvest_config (id) VALUES (1) ON CONFLICT DO NOTHING;
 END $$;
