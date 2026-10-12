@@ -352,24 +352,52 @@ table.dt tr.expand-row td{background:var(--ash2);padding:0;border-bottom:1px sol
 /* NOTIFICATION BELL + PANEL */
 .notif-bell{position:relative;cursor:pointer;display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--r);border:1px solid var(--dust);background:var(--ash3);color:var(--mist);transition:color .15s,border-color .15s;flex-shrink:0;}
 .notif-bell:hover{color:var(--white);border-color:var(--mist);}
-.notif-badge{position:absolute;top:-5px;right:-5px;background:var(--ember);color:#fff;font-size:.55rem;font-family:var(--font-m);width:17px;height:17px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid var(--ash);display:none;}
-.notif-panel{position:fixed;top:56px;right:1rem;width:380px;max-height:520px;background:var(--ash2);border:1px solid var(--dust);border-radius:var(--r-lg);z-index:200;display:none;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6);}
+.notif-badge{position:absolute;top:-5px;right:-5px;background:var(--ember);color:#fff;font-size:.55rem;font-family:var(--font-m);width:17px;height:17px;border-radius:50%;align-items:center;justify-content:center;border:2px solid var(--ash);display:none;}
+.notif-badge.visible{display:flex;}
+.notif-panel{position:fixed;top:56px;right:1rem;width:400px;max-height:560px;background:var(--ash2);border:1px solid var(--dust);border-radius:var(--r-lg);z-index:200;display:none;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6);}
 .notif-panel.open{display:flex;}
-.notif-panel-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--dust);}
+.notif-panel-head{display:flex;align-items:center;justify-content:space-between;padding:.75rem 1rem;border-bottom:1px solid var(--dust);flex-shrink:0;}
 .notif-panel-title{font-size:.78rem;font-weight:600;color:var(--white);}
 .notif-read-all{font-size:.68rem;color:var(--smoke);cursor:pointer;font-family:var(--font-m);}
 .notif-read-all:hover{color:var(--ember);}
 .notif-list{overflow-y:auto;flex:1;}
 .notif-item{display:flex;gap:.75rem;padding:.85rem 1rem;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .15s;position:relative;}
-.notif-item:hover{background:rgba(255,255,255,.03);}
+.notif-item:hover{background:rgba(255,255,255,.04);}
 .notif-item.unread{background:rgba(232,98,42,.04);}
 .notif-item.unread::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--ember);}
 .notif-icon{font-size:1.1rem;flex-shrink:0;margin-top:.1rem;}
 .notif-body{flex:1;min-width:0;}
 .notif-title-text{font-size:.78rem;font-weight:500;color:var(--white);margin-bottom:.2rem;line-height:1.3;}
-.notif-body-text{font-size:.7rem;color:var(--smoke);line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;}
+.notif-preview{font-size:.7rem;color:var(--smoke);line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.notif-open-hint{font-size:.6rem;color:var(--ember);margin-top:.25rem;font-family:var(--font-m);}
 .notif-time{font-size:.6rem;color:var(--smoke);font-family:var(--font-m);margin-top:.3rem;}
 .notif-empty{text-align:center;padding:2.5rem 1rem;color:var(--smoke);font-size:.8rem;}
+/* Full notification read modal */
+.notif-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:500;display:none;align-items:center;justify-content:center;padding:1.5rem;}
+.notif-modal-overlay.open{display:flex;}
+.notif-modal{background:var(--ash2);border:1px solid var(--dust);border-radius:var(--r-lg);width:100%;max-width:600px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.7);}
+.notif-modal-top{display:flex;align-items:flex-start;gap:.75rem;padding:1.25rem 1.25rem .75rem;border-bottom:1px solid var(--dust);flex-shrink:0;}
+.notif-modal-icon{font-size:1.5rem;flex-shrink:0;}
+.notif-modal-meta{flex:1;min-width:0;}
+.notif-modal-title{font-family:var(--font-d);font-size:1.25rem;letter-spacing:.03em;color:var(--white);line-height:1.2;margin-bottom:.25rem;}
+.notif-modal-time{font-size:.65rem;color:var(--smoke);font-family:var(--font-m);}
+.notif-modal-close{cursor:pointer;color:var(--smoke);font-size:1.1rem;padding:4px 8px;border-radius:var(--r);border:1px solid transparent;transition:all .15s;flex-shrink:0;}
+.notif-modal-close:hover{color:var(--white);border-color:var(--dust);}
+.notif-modal-body{padding:1.25rem;overflow-y:auto;flex:1;font-size:.83rem;color:var(--mist);line-height:1.75;white-space:pre-wrap;}
+
+/* VELOCITY CHART TAB */
+.vel-wrap{padding:.75rem 0;}
+.vel-loading{font-size:.75rem;color:var(--smoke);padding:.5rem 0;}
+.vel-empty{font-size:.75rem;color:var(--smoke);padding:.5rem 0;font-style:italic;}
+.vel-chart-area{margin-bottom:1rem;}
+.vel-chart-title{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:var(--smoke);font-family:var(--font-m);margin-bottom:.4rem;}
+.vel-svg{width:100%;height:140px;display:block;}
+.vel-legend{display:flex;gap:1.2rem;margin-bottom:.75rem;}
+.vel-legend-item{display:flex;align-items:center;gap:.35rem;font-size:.65rem;color:var(--mist);font-family:var(--font-m);}
+.vel-legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.vel-snapshots{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.25rem;}
+.vel-snap-chip{background:var(--ash3);border:1px solid var(--dust);border-radius:20px;padding:3px 9px;font-size:.65rem;font-family:var(--font-m);color:var(--mist);}
+.vel-snap-chip .snap-label{color:var(--smoke);margin-right:.3rem;}
 
 /* ADMIN MEMBERS */
 .member-list{display:flex;flex-wrap:wrap;gap:.3rem;margin-top:.35rem;}
@@ -1785,6 +1813,7 @@ function renderExpand(d){
 
       <div class="xtabs" onclick="event.stopPropagation()">
         <div class="xtab active" onclick="switchXTab(this,'${vid}','stats')">Stats</div>
+        <div class="xtab" onclick="switchXTab(this,'${vid}','velocity')">Velocity</div>
         <div class="xtab" onclick="switchXTab(this,'${vid}','timeline')">Timeline ${anns.length?'<span style="color:var(--ember);font-size:.6rem;">'+anns.length+'</span>':''}</div>
         <div class="xtab" onclick="switchXTab(this,'${vid}','review')">Review ${review.content_skeleton?'<span style="color:var(--green);font-size:.6rem;">✓</span>':''}</div>
       </div>
@@ -1829,6 +1858,13 @@ function renderExpand(d){
         </div>
         ${d.intro_opening_line?`<div class="xnote">Opening line — "${esc(d.intro_opening_line)}"</div>`:''}`:
         `<div class="xnote">No intro analysis yet — run it from Single Video.</div>`}
+      </div>
+
+      <!-- VELOCITY TAB -->
+      <div class="xtab-pane" id="xtab-velocity-${vid}" onclick="event.stopPropagation()">
+        <div id="vel-wrap-${vid}" class="vel-wrap">
+          <div class="vel-loading" id="vel-loading-${vid}">Loading velocity data…</div>
+        </div>
       </div>
 
       <!-- TIMELINE TAB -->
@@ -1958,6 +1994,105 @@ function switchXTab(el, vid, tab){
   if(tab==='timeline') initPlayerOverlay(vid);
   // Stop poll when leaving timeline
   if(tab!=='timeline') stopPlayerPoll(vid);
+  // Load velocity chart on first open
+  if(tab==='velocity') loadVelocityChart(vid);
+}
+
+// Velocity data cache
+const velCache = {};
+
+async function loadVelocityChart(vid){
+  const wrap = document.getElementById('vel-wrap-'+vid);
+  if(!wrap) return;
+  if(velCache[vid]==='loaded') return; // already rendered
+  velCache[vid]='loaded';
+  try{
+    const data = await api('GET','/videos/'+vid+'/velocity');
+    const rows = data.rows||[];
+    if(!rows.length){
+      wrap.innerHTML='<div class="vel-empty">No velocity snapshots yet. Snapshots are captured automatically after a video is added (1h, 2h, 3h, 6h, 12h, 24h, 48h, 7d, 30d).</div>';
+      return;
+    }
+    // Ordered snapshot labels
+    const SNAP_ORDER=['1h','2h','3h','6h','12h','24h','48h','7d','30d'];
+    const byType={};
+    rows.forEach(r=>byType[r.snapshot_type]=r);
+    const ordered=SNAP_ORDER.filter(s=>byType[s]);
+    if(!ordered.length){
+      wrap.innerHTML='<div class="vel-empty">No completed snapshots yet.</div>';
+      return;
+    }
+    const vViews=ordered.map(s=>parseInt(byType[s].views)||0);
+    const vLikes=ordered.map(s=>parseInt(byType[s].likes)||0);
+    const vComments=ordered.map(s=>parseInt(byType[s].comments)||0);
+
+    wrap.innerHTML=`
+      <div class="vel-legend">
+        <div class="vel-legend-item"><div class="vel-legend-dot" style="background:#4a9eff;"></div>Views</div>
+        <div class="vel-legend-item"><div class="vel-legend-dot" style="background:#f5a623;"></div>Likes</div>
+        <div class="vel-legend-item"><div class="vel-legend-dot" style="background:#26c6a6;"></div>Comments</div>
+      </div>
+      <div class="vel-chart-area">
+        <div class="vel-chart-title">Cumulative metrics at each snapshot</div>
+        ${velSvg(ordered,vViews,'#4a9eff',vLikes,'#f5a623',vComments,'#26c6a6')}
+      </div>
+      <div class="vel-snapshots">
+        ${ordered.map(s=>`<div class="vel-snap-chip"><span class="snap-label">${s}</span>${fmtNum(byType[s].views)} views</div>`).join('')}
+      </div>`;
+  }catch(e){
+    wrap.innerHTML='<div class="vel-empty">Error loading velocity data.</div>';
+  }
+}
+
+function velSvg(labels, views, cViews, likes, cLikes, comments, cComments){
+  const W=600,H=120,PL=52,PR=12,PT=10,PB=28;
+  const chartW=W-PL-PR, chartH=H-PT-PB;
+  const n=labels.length;
+  if(n<1) return '';
+  const maxVal=Math.max(...views,...likes,...comments,1);
+
+  function polyline(vals,color){
+    const pts=vals.map((v,i)=>{
+      const x=PL+(i/(Math.max(n-1,1)))*chartW;
+      const y=PT+chartH-(v/maxVal)*chartH;
+      return x+','+y;
+    }).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+  }
+  function dots(vals,color){
+    return vals.map((v,i)=>{
+      const x=PL+(i/(Math.max(n-1,1)))*chartW;
+      const y=PT+chartH-(v/maxVal)*chartH;
+      return `<circle cx="${x}" cy="${y}" r="3" fill="${color}" stroke="var(--ash2)" stroke-width="1.5">
+        <title>${labels[i]}: ${fmtNum(v)}</title></circle>`;
+    }).join('');
+  }
+
+  // Y axis labels (0, max)
+  const yLabels=`
+    <text x="${PL-4}" y="${PT+chartH}" text-anchor="end" class="vel-axis-label">0</text>
+    <text x="${PL-4}" y="${PT+6}" text-anchor="end" class="vel-axis-label">${fmtNum(maxVal)}</text>`;
+
+  // X axis labels
+  const xLabels=labels.map((l,i)=>{
+    const x=PL+(i/(Math.max(n-1,1)))*chartW;
+    return `<text x="${x}" y="${H-4}" text-anchor="middle" class="vel-axis-label">${l}</text>`;
+  }).join('');
+
+  // Grid lines
+  const grid=[0,.25,.5,.75,1].map(pct=>{
+    const y=PT+chartH-pct*chartH;
+    return `<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="var(--dust)" stroke-width=".5"/>`;
+  }).join('');
+
+  return `<svg class="vel-svg" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg">
+    <style>.vel-axis-label{font-size:10px;fill:var(--smoke);font-family:var(--font-m);}</style>
+    ${grid}
+    ${polyline(views,cViews)}${dots(views,cViews)}
+    ${polyline(likes,cLikes)}${dots(likes,cLikes)}
+    ${polyline(comments,cComments)}${dots(comments,cComments)}
+    ${yLabels}${xLabels}
+  </svg>`;
 }
 
 // Timeline interaction
@@ -2604,36 +2739,42 @@ async function loadNotifications(){
     const list  = document.getElementById('notif-list');
     if(!data.rows||!data.rows.length){
       list.innerHTML='<div class="notif-empty">No notifications yet</div>';
-      badge.style.display='none';
+      badge.classList.remove('visible');
       return;
     }
-    if(data.unread>0){
-      badge.style.display='flex';
-      badge.textContent = data.unread > 9 ? '9+' : data.unread;
-    } else {
-      badge.style.display='none';
-    }
-    list.innerHTML = data.rows.map(n => `
-      <div class="notif-item ${n.read?'':'unread'}" onclick="markNotifRead(${n.id},this)">
+    badge.classList.toggle('visible', data.unread > 0);
+    badge.textContent = data.unread > 9 ? '9+' : (data.unread || '');
+    list.innerHTML = data.rows.map(n => {
+      const bodyAttr = encodeURIComponent(n.body||'');
+      const titleAttr = encodeURIComponent(n.title||'');
+      return `
+      <div class="notif-item ${n.read?'':'unread'}" onclick="openNotif(${n.id},'${titleAttr}','${bodyAttr}','${escHtml(n.type)}','${escHtml(n.created_at)}')">
         <div class="notif-icon">${NOTIF_TYPE_ICONS[n.type]||'🔔'}</div>
         <div class="notif-body">
           <div class="notif-title-text">${escHtml(n.title)}</div>
-          <div class="notif-body-text">${escHtml(n.body)}</div>
+          <div class="notif-preview">${escHtml((n.body||'').substring(0,120))}${(n.body||'').length>120?'…':''}</div>
           <div class="notif-time">${timeAgo(n.created_at)}</div>
         </div>
-      </div>
-    `).join('');
+      </div>`;
+    }).join('');
   }catch(e){console.warn('[notif]',e.message);}
 }
 
-async function markNotifRead(id, el){
-  if(el && el.classList.contains('unread')){
-    el.classList.remove('unread');
-    try{
-      await api('PATCH','/notifications/'+id+'/read');
-      loadNotifications();
-    }catch(e){}
-  }
+async function openNotif(id, titleEnc, bodyEnc, type, createdAt){
+  const title = decodeURIComponent(titleEnc);
+  const body  = decodeURIComponent(bodyEnc);
+  // Populate modal
+  document.getElementById('notif-modal-icon').textContent  = NOTIF_TYPE_ICONS[type]||'🔔';
+  document.getElementById('notif-modal-title').textContent = title;
+  document.getElementById('notif-modal-time').textContent  = timeAgo(createdAt);
+  document.getElementById('notif-modal-body').textContent  = body;
+  document.getElementById('notif-modal-overlay').classList.add('open');
+  // Mark read silently
+  try{ await api('PATCH','/notifications/'+id+'/read'); loadNotifications(); }catch(e){}
+}
+
+function closeNotifModal(){
+  document.getElementById('notif-modal-overlay').classList.remove('open');
 }
 
 async function markAllNotifRead(){
@@ -2656,6 +2797,17 @@ document.addEventListener('click', e=>{
   if(notifPanelOpen && !e.target.closest('#notif-panel') && !e.target.closest('#notif-bell')){
     document.getElementById('notif-panel').classList.remove('open');
     notifPanelOpen=false;
+  }
+});
+
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape'){
+    const modal=document.getElementById('notif-modal-overlay');
+    if(modal && modal.classList.contains('open')){ closeNotifModal(); return; }
+    if(notifPanelOpen){
+      document.getElementById('notif-panel').classList.remove('open');
+      notifPanelOpen=false;
+    }
   }
 });
 
@@ -3066,5 +3218,21 @@ function autoFillCapStart(vid) {
   if (endEl && !endEl.value) endEl.value = (t + 4).toFixed(1);
 }
 </script>
+
+<!-- NOTIFICATION READ MODAL -->
+<div class="notif-modal-overlay" id="notif-modal-overlay" onclick="if(event.target===this)closeNotifModal()">
+  <div class="notif-modal">
+    <div class="notif-modal-top">
+      <div class="notif-modal-icon" id="notif-modal-icon">🔔</div>
+      <div class="notif-modal-meta">
+        <div class="notif-modal-title" id="notif-modal-title"></div>
+        <div class="notif-modal-time" id="notif-modal-time"></div>
+      </div>
+      <div class="notif-modal-close" onclick="closeNotifModal()" title="Close">✕</div>
+    </div>
+    <div class="notif-modal-body" id="notif-modal-body"></div>
+  </div>
+</div>
+
 </body>
 </html>
