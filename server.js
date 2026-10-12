@@ -611,6 +611,18 @@ app.delete('/admin/channels/:id', async (req, res) => {
 
 // Manual cron triggers are handled by the generic POST /admin/cron/:job route below (in NOTIFICATIONS section)
 
+// ── Velocity data for a video (graph) ────────────────────────
+app.get('/videos/:id/velocity', async (req, res) => {
+  if (!requireAuth(req, res)) return;
+  const rows = await q(
+    `SELECT snapshot_type, views, likes, comments, captured_at
+     FROM video_velocity WHERE video_id=$1
+     ORDER BY captured_at ASC`,
+    [req.params.id]
+  );
+  res.json({ rows });
+});
+
 // ── Velocity schedule ─────────────────────────────────────────
 app.get('/admin/velocity-schedule', async (req, res) => {
   if (!requireAuth(req, res)) return;
